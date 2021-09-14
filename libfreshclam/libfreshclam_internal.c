@@ -116,7 +116,7 @@ uint32_t g_requestTimeout = 0;
 
 uint32_t g_bCompressLocalDatabase = 0;
 
-mirrors_dat_v1_t *g_mirrorsDat = NULL;
+freshclam_dat_v1_t *g_freshclamDat = NULL;
 
 /** @brief Generate a Version 4 UUID according to RFC-4122
  *
@@ -164,14 +164,14 @@ static void uuid_v4_gen(char *buffer)
     return;
 }
 
-fc_error_t load_mirrors_dat(void)
+fc_error_t load_freshclam_dat(void)
 {
-    fc_error_t status      = FC_EINIT;
-    int handle             = -1;
-    ssize_t bread          = 0;
-    mirrors_dat_v1_t *mdat = NULL;
-    uint32_t version       = 0;
-    char magic[13]         = {0};
+    fc_error_t status        = FC_EINIT;
+    int handle               = -1;
+    ssize_t bread            = 0;
+    freshclam_dat_v1_t *mdat = NULL;
+    uint32_t version         = 0;
+    char magic[13]           = {0};
 
     /* Change directory to database directory */
     if (chdir(g_databaseDirectory)) {
@@ -181,13 +181,13 @@ fc_error_t load_mirrors_dat(void)
     }
     logg("*Current working dir is %s\n", g_databaseDirectory);
 
-    if (-1 == (handle = open("mirrors.dat", O_RDONLY | O_BINARY))) {
+    if (-1 == (handle = open("freshclam.dat", O_RDONLY | O_BINARY))) {
         char currdir[PATH_MAX];
 
         if (getcwd(currdir, sizeof(currdir)))
-            logg("*Can't open mirrors.dat in %s\n", currdir);
+            logg("*Can't open freshclam.dat in %s\n", currdir);
         else
-            logg("*Can't open mirrors.dat in the current directory\n");
+            logg("*Can't open freshclam.dat in the current directory\n");
 
         logg("*It probably doesn't exist yet. That's ok.\n");
         status = FC_EFILE;
@@ -197,18 +197,18 @@ fc_error_t load_mirrors_dat(void)
     if (strlen(MIRRORS_DAT_MAGIC) != (bread = read(handle, &magic, strlen(MIRRORS_DAT_MAGIC)))) {
         char error_message[260];
         cli_strerror(errno, error_message, 260);
-        logg("!Can't read magic from mirrors.dat. Bytes read: %zi, error: %s\n", bread, error_message);
+        logg("!Can't read magic from freshclam.dat. Bytes read: %zi, error: %s\n", bread, error_message);
         goto done;
     }
     if (0 != strncmp(magic, MIRRORS_DAT_MAGIC, strlen(MIRRORS_DAT_MAGIC))) {
-        logg("*Magic bytes for mirrors.dat did not match expectations.\n");
+        logg("*Magic bytes for freshclam.dat did not match expectations.\n");
         goto done;
     }
 
     if (sizeof(uint32_t) != (bread = read(handle, &version, sizeof(uint32_t)))) {
         char error_message[260];
         cli_strerror(errno, error_message, 260);
-        logg("!Can't read version from mirrors.dat. Bytes read: %zi, error: %s\n", bread, error_message);
+        logg("!Can't read version from freshclam.dat. Bytes read: %zi, error: %s\n", bread, error_message);
         goto done;
     }
 
@@ -217,25 +217,30 @@ fc_error_t load_mirrors_dat(void)
             /* Verify that file size is as expected. */
             off_t file_size = lseek(handle, 0L, SEEK_END);
 
-            if (strlen(MIRRORS_DAT_MAGIC) + sizeof(mirrors_dat_v1_t) != (size_t)file_size) {
-                logg("*mirrors.dat is bigger than expected: %zu != %ld\n", sizeof(mirrors_dat_v1_t), file_size);
+            if (strlen(MIRRORS_DAT_MAGIC) + sizeof(freshclam_dat_v1_t) != (size_t)file_size) {
+                logg("*freshclam.dat is bigger than expected: %zu != %ld\n", sizeof(freshclam_dat_v1_t), file_size);
                 goto done;
             }
 
             /* Rewind to just after the magic bytes and read data struct */
-            lseek(handle, strlen(MIRRORS_DAT_MAGIC), SEEK_SET);
+            if (-1 == lseek(handle, strlen(MIRRORS_DAT_MAGIC), SEEK_SET)) {
+                char error_message[260];
+                cli_strerror(errno, error_message, 260);
+                logg("!Can't seek to %lu, error: %s\n", strlen(MIRRORS_DAT_MAGIC), error_message);
+                goto done;
+            }
 
-            mdat = malloc(sizeof(mirrors_dat_v1_t));
+            mdat = malloc(sizeof(freshclam_dat_v1_t));
             if (NULL == mdat) {
-                logg("!Failed to allocate memory for mirrors.dat\n");
+                logg("!Failed to allocate memory for freshclam.dat\n");
                 status = FC_EMEM;
                 goto done;
             }
 
-            if (sizeof(mirrors_dat_v1_t) != (bread = read(handle, mdat, sizeof(mirrors_dat_v1_t)))) {
+            if (sizeof(freshclam_dat_v1_t) != (bread = read(handle, mdat, sizeof(freshclam_dat_v1_t)))) {
                 char error_message[260];
                 cli_strerror(errno, error_message, 260);
-                logg("!Can't read from mirrors.dat. Bytes read: %zi, error: %s\n", bread, error_message);
+                logg("!Can't read from freshclam.dat. Bytes read: %zi, error: %s\n", bread, error_message);
                 goto done;
             }
 
@@ -245,27 +250,27 @@ fc_error_t load_mirrors_dat(void)
 
             /* This is the latest version.
                If we change the format in the future, we may wish to create a new
-               mirrors dat struct, import the relevant bits to the new format,
-               and then save (overwrite) mirrors.dat with the new data. */
-            if (NULL != g_mirrorsDat) {
-                free(g_mirrorsDat);
+               freshclam.dat struct, import the relevant bits to the new format,
+               and then save (overwrite) freshclam.dat with the new data. */
+            if (NULL != g_freshclamDat) {
+                free(g_freshclamDat);
             }
-            g_mirrorsDat = mdat;
-            mdat         = NULL;
+            g_freshclamDat = mdat;
+            mdat           = NULL;
             break;
         }
         default: {
-            logg("*mirrors.dat version is different than expected: %u != %u\n", 1, version);
+            logg("*freshclam.dat version is different than expected: %u != %u\n", 1, version);
             goto done;
         }
     }
 
-    logg("*Loaded mirrors.dat:\n");
-    logg("*  version:    %d\n", g_mirrorsDat->version);
-    logg("*  uuid:       %s\n", g_mirrorsDat->uuid);
-    if (g_mirrorsDat->retry_after > 0) {
+    logg("*Loaded freshclam.dat:\n");
+    logg("*  version:    %d\n", g_freshclamDat->version);
+    logg("*  uuid:       %s\n", g_freshclamDat->uuid);
+    if (g_freshclamDat->retry_after > 0) {
         char retry_after_string[26];
-        struct tm *tm_info = localtime(&g_mirrorsDat->retry_after);
+        struct tm *tm_info = localtime(&g_freshclamDat->retry_after);
         if (NULL == tm_info) {
             logg("!Failed to query the local time for the retry-after date!\n");
             goto done;
@@ -284,45 +289,45 @@ done:
         if (NULL != mdat) {
             free(mdat);
         }
-        if (NULL != g_mirrorsDat) {
-            free(g_mirrorsDat);
-            g_mirrorsDat = NULL;
+        if (NULL != g_freshclamDat) {
+            free(g_freshclamDat);
+            g_freshclamDat = NULL;
         }
     }
 
     return status;
 }
 
-fc_error_t save_mirrors_dat(void)
+fc_error_t save_freshclam_dat(void)
 {
     fc_error_t status = FC_EINIT;
     int handle        = -1;
 
-    if (NULL == g_mirrorsDat) {
-        logg("!Attempted to save mirrors data to mirrors.dat before initializing it!\n");
+    if (NULL == g_freshclamDat) {
+        logg("!Attempted to save freshclam.dat before initializing data struct!\n");
         goto done;
     }
 
-    if (-1 == (handle = open("mirrors.dat", O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644))) {
+    if (-1 == (handle = open("freshclam.dat", O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, 0644))) {
         char currdir[PATH_MAX];
 
         if (getcwd(currdir, sizeof(currdir)))
-            logg("!Can't create mirrors.dat in %s\n", currdir);
+            logg("!Can't create freshclam.dat in %s\n", currdir);
         else
-            logg("!Can't create mirrors.dat in the current directory\n");
+            logg("!Can't create freshclam.dat in the current directory\n");
 
         logg("Hint: The database directory must be writable for UID %d or GID %d\n", getuid(), getgid());
         status = FC_EDBDIRACCESS;
         goto done;
     }
     if (-1 == write(handle, MIRRORS_DAT_MAGIC, strlen(MIRRORS_DAT_MAGIC))) {
-        logg("!Can't write to mirrors.dat\n");
+        logg("!Can't write to freshclam.dat\n");
     }
-    if (-1 == write(handle, g_mirrorsDat, sizeof(mirrors_dat_v1_t))) {
-        logg("!Can't write to mirrors.dat\n");
+    if (-1 == write(handle, g_freshclamDat, sizeof(freshclam_dat_v1_t))) {
+        logg("!Can't write to freshclam.dat\n");
     }
 
-    logg("*Saved mirrors.dat\n");
+    logg("*Saved freshclam.dat\n");
 
     status = FC_SUCCESS;
 done:
@@ -333,13 +338,13 @@ done:
     return status;
 }
 
-fc_error_t new_mirrors_dat(void)
+fc_error_t new_freshclam_dat(void)
 {
     fc_error_t status = FC_EINIT;
 
-    mirrors_dat_v1_t *mdat = calloc(1, sizeof(mirrors_dat_v1_t));
+    freshclam_dat_v1_t *mdat = calloc(1, sizeof(freshclam_dat_v1_t));
     if (NULL == mdat) {
-        logg("!Failed to allocate memory for mirrors.dat\n");
+        logg("!Failed to allocate memory for freshclam.dat\n");
         status = FC_EMEM;
         goto done;
     }
@@ -348,15 +353,15 @@ fc_error_t new_mirrors_dat(void)
     mdat->retry_after = 0;
     uuid_v4_gen(mdat->uuid);
 
-    if (NULL != g_mirrorsDat) {
-        free(g_mirrorsDat);
+    if (NULL != g_freshclamDat) {
+        free(g_freshclamDat);
     }
-    g_mirrorsDat = mdat;
+    g_freshclamDat = mdat;
 
-    logg("*Creating new mirrors.dat\n");
+    logg("*Creating new freshclam.dat\n");
 
-    if (FC_SUCCESS != save_mirrors_dat()) {
-        logg("!Failed to save mirrors.dat!\n");
+    if (FC_SUCCESS != save_freshclam_dat()) {
+        logg("!Failed to save freshclam.dat!\n");
         status = FC_EFILE;
         goto done;
     }
@@ -368,7 +373,7 @@ done:
         if (NULL != mdat) {
             free(mdat);
         }
-        g_mirrorsDat = NULL;
+        g_freshclamDat = NULL;
     }
     return status;
 }
@@ -597,7 +602,7 @@ static fc_error_t create_curl_handle(
         snprintf(userAgent, sizeof(userAgent),
                  PACKAGE "/%s (OS: " TARGET_OS_TYPE ", ARCH: " TARGET_ARCH_TYPE ", CPU: " TARGET_CPU_TYPE ", UUID: %s)",
                  get_version(),
-                 g_mirrorsDat->uuid);
+                 g_freshclamDat->uuid);
     }
     userAgent[sizeof(userAgent) - 1] = 0;
 
@@ -618,8 +623,16 @@ static fc_error_t create_curl_handle(
         if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, g_connectTimeout)) {
             logg("!create_curl_handle: Failed to set CURLOPT_CONNECTTIMEOUT (%u)!\n", g_connectTimeout);
         }
-        if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_TIMEOUT, g_requestTimeout)) {
-            logg("!create_curl_handle: Failed to set CURLOPT_TIMEOUT (%u)!\n", g_requestTimeout);
+        if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, g_requestTimeout)) {
+            logg("!create_curl_handle: Failed to set CURLOPT_LOW_SPEED_TIME  (%u)!\n", g_requestTimeout);
+        }
+        if (g_requestTimeout > 0) {
+            /* Minimum speed is 1 byte/second over the previous g_requestTimeout seconds. */
+            int minimumSpeed = 1;
+
+            if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, minimumSpeed)) {
+                logg("!create_curl_handle: Failed to set CURLOPT_LOW_SPEED_LIMIT  (%u)!\n", minimumSpeed);
+            }
         }
 
         if (bAllowRedirect) {
@@ -792,7 +805,7 @@ static size_t WriteFileCallback(void *contents, size_t size, size_t nmemb, void 
  * @param ifModifiedSince   modified time of local database. May be 0 to always get the CVD header.
  * @param server            server to use to retrieve for database header.
  * @param logerr            non-zero to upgrade warnings to errors.
- * @param cvd               [out] CVD header of newest available CVD, if FC_SUCCESS
+ * @param[out] cvd          CVD header of newest available CVD, if FC_SUCCESS
  * @return fc_error_t       FC_SUCCESS if CVD header obtained.
  * @return fc_error_t       FC_UPTODATE if received 304 in response to ifModifiedSince date.
  * @return fc_error_t       Another error code if failure occured.
@@ -877,25 +890,25 @@ static fc_error_t remote_cvdhead(
        if both callbacks are set. */
 
         if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, xferinfo)) {
-            logg("!create_curl_handle: Failed to set transfer info function!\n");
+            logg("!remote_cvdhead: Failed to set transfer info function!\n");
         }
         /* pass the struct pointer into the xferinfo function, note that this is
            an alias to CURLOPT_PROGRESSDATA */
         if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &prog)) {
-            logg("!create_curl_handle: Failed to set transfer info data structure!\n");
+            logg("!remote_cvdhead: Failed to set transfer info data structure!\n");
         }
 #else
         if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_PROGRESSFUNCTION, older_progress)) {
-            logg("!create_curl_handle: Failed to set progress function!\n");
+            logg("!remote_cvdhead: Failed to set progress function!\n");
         }
         /* pass the struct pointer into the progress function */
         if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_PROGRESSDATA, &prog)) {
-            logg("!create_curl_handle: Failed to set progress data structure!\n");
+            logg("!remote_cvdhead: Failed to set progress data structure!\n");
         }
 #endif
 
         if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L)) {
-            logg("!create_curl_handle: Failed to disable progress function!\n");
+            logg("!remote_cvdhead: Failed to disable progress function!\n");
         }
     }
 
@@ -1013,13 +1026,13 @@ static fc_error_t remote_cvdhead(
 
             if (retry_after > 0) {
                 /* The response gave us a Retry-After date. Use that. */
-                g_mirrorsDat->retry_after = time(NULL) + (time_t)retry_after;
+                g_freshclamDat->retry_after = time(NULL) + (time_t)retry_after;
             } else {
                 /* Try again in no less than 4 hours if the response didn't specify
                    or if CURLINFO_RETRY_AFTER is not supported. */
-                g_mirrorsDat->retry_after = time(NULL) + 60 * 60 * 4;
+                g_freshclamDat->retry_after = time(NULL) + 60 * 60 * 4;
             }
-            (void)save_mirrors_dat();
+            (void)save_freshclam_dat();
 
             break;
         }
@@ -1309,13 +1322,13 @@ static fc_error_t downloadFile(
 
             if (retry_after > 0) {
                 /* The response gave us a Retry-After date. Use that. */
-                g_mirrorsDat->retry_after = time(NULL) + (time_t)retry_after;
+                g_freshclamDat->retry_after = time(NULL) + (time_t)retry_after;
             } else {
                 /* Try again in no less than 4 hours if the response didn't specify
                    or if CURLINFO_RETRY_AFTER is not supported. */
-                g_mirrorsDat->retry_after = time(NULL) + 60 * 60 * 4;
+                g_freshclamDat->retry_after = time(NULL) + 60 * 60 * 4;
             }
-            (void)save_mirrors_dat();
+            (void)save_freshclam_dat();
 
             break;
         }
@@ -1474,7 +1487,7 @@ done:
  * Will create the temp dir if it does not already exist.
  *
  * @param database      The database we're updating.
- * @param tmpdir        [out] The name of the temp dir to use.
+ * @param[out] tmpdir   The name of the temp dir to use.
  * @return fc_error_t
  */
 static fc_error_t mkdir_and_chdir_for_cdiff_tmp(const char *database, const char *tmpdir)
@@ -1645,7 +1658,7 @@ done:
  * @brief Get CVD header info for local CVD/CLD database.
  *
  * @param database          Database name
- * @param localname         [out] (optional) filename of local database.
+ * @param[out] localname    (optional) filename of local database.
  * @return struct cl_cvd*   CVD info struct of local database, if found. NULL if not found.
  */
 static struct cl_cvd *currentdb(const char *database, char **localname)
@@ -1794,7 +1807,7 @@ static fc_error_t buildcld(
         }
     }
 
-    if (NULL == (dir = opendir("."))) {
+    if (NULL == (dir = opendir(tmpdir))) {
         logg("!buildcld: Can't open directory %s\n", tmpdir);
         status = FC_EDIRECTORY;
         goto done;
@@ -2329,7 +2342,7 @@ fc_error_t updatedb(
 
             ret = getcvd(remoteFilename, tmpfile, server, localTimestamp, remoteVersion, logerr);
             if (FC_SUCCESS != ret) {
-                if (FC_EMIRRORNOTSYNC == status) {
+                if (FC_EMIRRORNOTSYNC == ret) {
                     /* Note: We can't retry with CDIFF's if FC_EMIRRORNOTSYNC happened here.
                      * If we did there could be an infinite loop.
                      * Best option is to accept the older CVD.
@@ -2345,6 +2358,7 @@ fc_error_t updatedb(
             newLocalFilename = cli_strdup(remoteFilename);
         } else if (0 == numPatchesReceived) {
             logg("The database server doesn't have the latest patch for the %s database (version %u). The server will likely have updated if you check again in a few hours.\n", database, remoteVersion);
+            *dbFilename = cli_strdup(localFilename);
             goto up_to_date;
         } else {
             /*
@@ -2437,7 +2451,7 @@ fc_error_t updatedb(
     if (flevel < cvd->fl) {
         logg("^Your ClamAV installation is OUTDATED!\n");
         logg("^Current functionality level = %d, recommended = %d\n", flevel, cvd->fl);
-        logg("DON'T PANIC! Read https://www.clamav.net/documents/installing-clamav\n");
+        logg("DON'T PANIC! Read https://docs.clamav.net/manual/Installing.html\n");
     }
 
     *signo      = cvd->sigs;
@@ -2647,7 +2661,7 @@ fc_error_t updatecustomdb(
         if (flevel < cvd->fl) {
             logg("^Your ClamAV installation is OUTDATED!\n");
             logg("^Current functionality level = %d, recommended = %d\n", flevel, cvd->fl);
-            logg("DON'T PANIC! Read https://www.clamav.net/documents/installing-clamav\n");
+            logg("DON'T PANIC! Read https://docs.clamav.net/manual/Installing.html\n");
         }
 
         cl_cvdfree(cvd);

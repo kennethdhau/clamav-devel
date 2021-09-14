@@ -46,7 +46,7 @@ Skip printing OK files
 Sound bell on virus detection.
 .TP
 \fB\-\-tempdir=DIRECTORY\fR
-Create temporary files in DIRECTORY. Directory must be writable for the '@CLAMAVUSER@' user or unprivileged user running clamscan.
+Create temporary files in DIRECTORY. Directory must be writable for the '@CLAMAV_USER@' user or unprivileged user running clamscan.
 .TP
 \fB\-\-leave\-temps\fR
 Do not remove temporary files.
@@ -85,10 +85,10 @@ Scan files listed line by line in FILE.
 Remove infected files. \fBBe careful!\fR
 .TP
 \fB\-\-move=DIRECTORY\fR
-Move infected files into DIRECTORY. Directory must be writable for the '@CLAMAVUSER@' user or unprivileged user running clamscan.
+Move infected files into DIRECTORY. Directory must be writable for the '@CLAMAV_USER@' user or unprivileged user running clamscan.
 .TP
 \fB\-\-copy=DIRECTORY\fR
-Copy infected files into DIRECTORY. Directory must be writable for the '@CLAMAVUSER@' user or unprivileged user running clamscan.
+Copy infected files into DIRECTORY. Directory must be writable for the '@CLAMAV_USER@' user or unprivileged user running clamscan.
 .TP
 \fB\-\-exclude=REGEX, \-\-exclude\-dir=REGEX\fR
 Don't scan file/directory names matching regular expression. These options can be used multiple times.
@@ -112,10 +112,10 @@ Collect and print execution statistics.
 Detect Possibly Unwanted Applications.
 .TP
 \fB\-\-exclude\-pua=CATEGORY\fR
-Exclude a specific PUA category. This option can be used multiple times. See https://www.clamav.net/documents/potentially-unwanted-applications-pua for the complete list of PUA
+Exclude a specific PUA category. This option can be used multiple times. See https://docs.clamav.net/faq/faq-pua.html for the complete list of PUA
 .TP
 \fB\-\-include\-pua=CATEGORY\fR
-Only include a specific PUA category. This option can be used multiple times. See https://www.clamav.net/documents/potentially-unwanted-applications-pua for the complete list of PUA
+Only include a specific PUA category. This option can be used multiple times. See https://docs.clamav.net/faq/faq-pua.html for the complete list of PUA
 .TP
 \fB\-\-detect\-structured[=yes/no(*)]\fR
 Use the DLP (Data Loss Prevention) module to detect SSN and Credit Card numbers inside documents/text files.
@@ -201,6 +201,12 @@ Alert on emails containing cloaked URLs (might lead to some false positives).
 \fB\-\-alert\-partition\-intersection[=yes/no(*)]\fR
 Detect partition intersections in raw disk images using heuristics.
 .TP
+\fB\-\-nocerts\fR
+Disable authenticode certificate chain verification in PE files.
+.TP
+\fB\-\-dumpcerts\fR
+Dump authenticode certificate chain in PE files.
+.TP
 \fB\-\-max\-scantime=#n\fR
 The maximum time to scan before giving up. The value is in milliseconds. The value of 0 disables the limit. This option protects your system against DoS attacks (default: 120000 = 120s or 2min)
 .TP
@@ -255,6 +261,13 @@ Maximum size file to perform PCRE subsig matching (default: 25 MB, max: <4 GB).
 .TP
 \fB\-\-disable\-cache\fR
 Disable caching and cache checks for hash sums of scanned files.
+
+.SH "ENVIRONMENT VARIABLES"
+.LP
+clamscan uses the following environment variables:
+.TP
+LD_LIBRARY_PATH - May be used on startup to find the libclamunrar_iface shared library module to enable RAR archive support.
+
 .SH "EXAMPLES"
 .LP
 .TP

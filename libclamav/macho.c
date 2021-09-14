@@ -407,7 +407,7 @@ int cli_scanmacho(cli_ctx *ctx, struct cli_exe_info *fileinfo)
                     sections[sect].rva = EC32(section.addr, conv);
                     sections[sect].vsz = EC32(section.size, conv);
                     sections[sect].raw = EC32(section.offset, conv);
-                    if ((uint64_t)1 << EC32(section.align, conv) > INT32_MAX) {
+                    if (EC32(section.align, conv) >= 32) {
                         cli_dbgmsg("cli_scanmacho: Section aligned is malformed\n");
                         free(sections);
                         RETURN_BROKEN;
@@ -562,6 +562,15 @@ int cli_scanmacho_unibin(cli_ctx *ctx)
         cli_dbgmsg("UNIBIN: Binary %u of %u\n", i + 1, fat_header.nfats);
         cli_dbgmsg("UNIBIN: File offset: %u\n", fat_arch.offset);
         cli_dbgmsg("UNIBIN: File size: %u\n", fat_arch.size);
+
+        /* The offset must be greater than the location of the header or we risk
+           re-scanning the same data over and over again. The scan recursion max
+           will save us, but it will still cause other problems and waste CPU. */
+        if (fat_arch.offset < at) {
+            cli_dbgmsg("Invalid fat offset: %d\n", fat_arch.offset);
+            RETURN_BROKEN;
+        }
+
         ret = cli_magic_scan_nested_fmap_type(map, fat_arch.offset, fat_arch.size, ctx, CL_TYPE_ANY, NULL);
         if (ret == CL_VIRUS)
             break;

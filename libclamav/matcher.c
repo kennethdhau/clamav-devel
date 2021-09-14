@@ -329,9 +329,9 @@ cl_error_t cli_scan_buff(const unsigned char *buffer, uint32_t length, uint32_t 
  */
 cl_error_t cli_caloff(const char *offstr, const struct cli_target_info *info, unsigned int target, uint32_t *offdata, uint32_t *offset_min, uint32_t *offset_max)
 {
-    char offcpy[65];
-    unsigned int n, val;
-    char *pt;
+    char offcpy[65] = {0};
+    unsigned int n = 0, val = 0;
+    char *pt = NULL;
 
     if (!info) { /* decode offset string */
         if (!offstr) {
@@ -635,7 +635,7 @@ cl_error_t cli_checkfp_virus(cli_ctx *ctx, const char *vname, uint32_t recursion
                 /* See whether the hash matches those loaded in from .cat files
                  * (associated with the .CAB file type) */
                 if (cli_hm_scan(&shash1[SHA1_HASH_SIZE], 1, &virname, ctx->engine->hm_fp, CLI_HASH_SHA1) == CL_VIRUS) {
-                    cli_dbgmsg("cli_checkfp(sha1): Found false positive detection via catalog file\n");
+                    cli_dbgmsg("cli_checkfp(sha1): Found .CAB false positive detection via catalog file\n");
                     return CL_CLEAN;
                 }
             }
@@ -649,6 +649,12 @@ cl_error_t cli_checkfp_virus(cli_ctx *ctx, const char *vname, uint32_t recursion
                 }
                 if (cli_hm_scan_wild(&shash256[SHA256_HASH_SIZE], &virname, ctx->engine->hm_fp, CLI_HASH_SHA256) == CL_VIRUS) {
                     cli_dbgmsg("cli_checkfp(sha256): Found false positive detection (fp sig: %s)\n", virname);
+                    return CL_CLEAN;
+                }
+                /* See whether the hash matches those loaded in from .cat files
+                 * (associated with the .CAB file type) */
+                if (cli_hm_scan(&shash256[SHA256_HASH_SIZE], 1, &virname, ctx->engine->hm_fp, CLI_HASH_SHA256) == CL_VIRUS) {
+                    cli_dbgmsg("cli_checkfp(sha256): Found .CAB false positive detection via catalog file\n");
                     return CL_CLEAN;
                 }
             }
@@ -1015,7 +1021,7 @@ cl_error_t cli_scan_fmap(cli_ctx *ctx, cli_file_t ftype, uint8_t ftonly, struct 
 
     /* If it's a PE, check the Authenticode header.  This would be more
      * appropriate in cli_scanpe, but scanraw->cli_scan_fmap gets
-     * called first for PEs, and we want to determine the whitelist/blacklist
+     * called first for PEs, and we want to determine the trust/block
      * status early on so we can skip things like embedded PE extraction
      * (which is broken for signed binaries within signed binaries).
      *
@@ -1352,7 +1358,7 @@ cl_error_t cli_matchmeta(cli_ctx *ctx, const char *fname, size_t fsizec, size_t 
 
     if (ctx->engine && ctx->engine->cb_meta)
         if (ctx->engine->cb_meta(cli_ftname(cli_get_container(ctx, -1)), fsizec, fname, fsizer, encrypted, filepos, ctx->cb_ctx) == CL_VIRUS) {
-            cli_dbgmsg("inner file blacklisted by callback: %s\n", fname);
+            cli_dbgmsg("inner file blocked by callback: %s\n", fname);
 
             ret = cli_append_virus(ctx, "Detected.By.Callback");
             viruses_found++;

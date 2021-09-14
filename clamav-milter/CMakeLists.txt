@@ -11,8 +11,8 @@ target_sources( clamav-milter
         connpool.h
         netcode.c
         netcode.h
-        whitelist.c
-        whitelist.h )
+        allow_list.c
+        allow_list.h )
 target_include_directories( clamav-milter
     PRIVATE ${CMAKE_BINARY_DIR} # For clamav-config.h
 )
@@ -22,4 +22,4 @@ target_link_libraries( clamav-milter
         ClamAV::libclamav
         ClamAV::common
         Sendmail::milter )
-install(TARGETS clamav-milter DESTINATION ${CMAKE_INSTALL_SBINDIR})
+install(TARGETS clamav-milter DESTINATION ${CMAKE_INSTALL_SBINDIR} COMPONENT programs)

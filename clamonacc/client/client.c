@@ -62,6 +62,7 @@
 #include "output.h"
 #include "misc.h"
 #include "actions.h"
+#include "clamdcom.h"
 
 #include "communication.h"
 #include "client.h"
@@ -69,8 +70,6 @@
 #include "socket.h"
 
 #include "../clamonacc.h"
-
-struct sockaddr_un nixsock;
 
 void onas_print_server_version(struct onas_context **ctx)
 {
@@ -90,6 +89,7 @@ int onas_check_remote(struct onas_context **ctx, cl_error_t *err)
     CURLcode curlcode;
     char *ipaddr = NULL;
     int64_t timeout;
+    const char zPING[] = "zPING";
 
     timeout = optget((*ctx)->clamdopts, "OnAccessCurlTimeout")->numarg;
 
@@ -138,12 +138,13 @@ int onas_check_remote(struct onas_context **ctx, cl_error_t *err)
             } else {
                 logg("!ClamClient: Could not connect to clamd, %s\n", curl_easy_strerror(curlcode));
             }
+            curl_easy_cleanup(curl);
             *err = CL_EARG;
             return ret;
         }
 
 #ifndef ONAS_DEBUG
-        if (onas_sendln(curl, "zPING", 5, timeout)) {
+        if (onas_sendln(curl, zPING, sizeof(zPING), timeout)) {
             logg("!ClamClient: could not ping clamd, %s\n", curl_easy_strerror(curlcode));
             *err = CL_EARG;
             curl_easy_cleanup(curl);
@@ -177,6 +178,7 @@ int16_t onas_ping_clamd(struct onas_context **ctx)
     int b_remote   = 0;
     uint16_t ret   = 0;
     int64_t timeout;
+    const char zPING[] = "zPING";
 
     if (ctx == NULL) {
         logg("!null parameter was passed\n");
@@ -242,7 +244,7 @@ int16_t onas_ping_clamd(struct onas_context **ctx)
         curlcode = curl_easy_perform(curl);
         if (CURLE_OK != curlcode) {
             logg("*ClamClient: could not connect to clamd, %s\n", curl_easy_strerror(curlcode));
-        } else if (CURLE_OK == onas_sendln(curl, "zPING", 5, timeout)) {
+        } else if (CURLE_OK == onas_sendln(curl, zPING, sizeof(zPING), timeout)) {
 
             if (!optget((*ctx)->opts, "wait")->enabled) {
                 logg("PONG\n");
@@ -397,7 +399,6 @@ CURLcode onas_curl_init(CURL **curl, const char *ipaddr, int64_t port, int64_t t
         curl_easy_cleanup(*curl);
         return curlcode;
     }
-
     return curlcode;
 }
 
@@ -484,6 +485,7 @@ int onas_get_clamd_version(struct onas_context **ctx)
     int len;
     struct onas_rcvln rcv;
     int64_t timeout;
+    const char zVERSION[] = "zVERSION";
 
     timeout = optget((*ctx)->clamdopts, "OnAccessCurlTimeout")->numarg;
 
@@ -509,10 +511,11 @@ int onas_get_clamd_version(struct onas_context **ctx)
     curlcode = curl_easy_perform(curl);
     if (CURLE_OK != curlcode) {
         logg("*ClamClient: could not connect to clamd, %s\n", curl_easy_strerror(curlcode));
+        curl_easy_cleanup(curl);
         return 2;
     }
 
-    if (onas_sendln(curl, "zVERSION", 9, timeout)) {
+    if (onas_sendln(curl, zVERSION, sizeof(zVERSION), timeout)) {
         curl_easy_cleanup(curl);
         return 2;
     }
@@ -571,6 +574,7 @@ int onas_client_scan(const char *tcpaddr, int64_t portnum, int32_t scantype, uin
             logg("!ClamClient: Connection to clamd failed, %s.\n", curl_easy_strerror(curlcode));
             disconnected = true;
         }
+        curl_easy_cleanup(curl);
         return CL_ECREAT;
     }
     if (disconnected) {

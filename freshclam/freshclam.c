@@ -60,6 +60,10 @@
 #include "output.h"
 #include "misc.h"
 
+#ifdef _WIN32
+#include "service.h"
+#endif
+
 // libfreshclam
 #include "libfreshclam.h"
 
@@ -173,6 +177,10 @@ static void help(void)
     printf("\n");
     printf("    --config-file=FILE                   Read configuration from FILE.\n");
     printf("    --log=FILE           -l FILE         Log into FILE\n");
+#ifdef _WIN32
+    printf("    --install-service                    Install Windows Service\n");
+    printf("    --uninstall-service                  Uninstall Windows Service\n");
+#endif
     printf("    --daemon             -d              Run in daemon mode\n");
     printf("    --pid=FILE           -p FILE         Save daemon's pid in FILE\n");
 #ifndef _WIN32
@@ -245,7 +253,7 @@ fc_error_t download_complete_callback(const char *dbFilename, void *context)
     }
 
     logg("*download_complete_callback: Download complete for database : %s\n", dbFilename);
-    logg("*download_complete_callback:   fc_context->bTestDatabases   : %u\n", fc_context->bBytecodeEnabled);
+    logg("*download_complete_callback:   fc_context->bTestDatabases   : %u\n", fc_context->bTestDatabases);
     logg("*download_complete_callback:   fc_context->bBytecodeEnabled : %u\n", fc_context->bBytecodeEnabled);
 
     logg("Testing database: '%s' ...\n", dbFilename);
@@ -422,7 +430,7 @@ done:
  * @param server            Server string
  * @param defaultProtocol   Default protocol if not already specified. Eg: "https"
  * @param defaultPort       Default port if not already specified. Eg: 443
- * @param serverUrl         [out] A malloced string in the protocol://server:port format.
+ * @param[out] serverUrl    A malloced string in the protocol://server:port format.
  * @return fc_error_t       FC_SUCCESS if success.
  * @return fc_error_t       FC_EARG if invalid args.
  * @return fc_error_t       FC_EMEM if malloc failed.
@@ -484,12 +492,12 @@ done:
 /**
  * @brief Add string to list of strings.
  *
- * @param item          string to add to list.
- * @param stringList    [in/out] String list to add string to.
- * @param nListItems    [in/out] Number of strings in list.
- * @return fc_error_t   FC_SUCCESS if success.
- * @return fc_error_t   FC_EARG if invalid args passed to function.
- * @return fc_error_t   FC_EMEM if failed to allocate memory.
+ * @param item                  string to add to list.
+ * @param[in,out] stringList    String list to add string to.
+ * @param[in,out] nListItems    Number of strings in list.
+ * @return fc_error_t           FC_SUCCESS if success.
+ * @return fc_error_t           FC_EARG if invalid args passed to function.
+ * @return fc_error_t           FC_EMEM if failed to allocate memory.
  */
 static fc_error_t string_list_add(const char *item, char ***stringList, uint32_t *nListItems)
 {
@@ -555,10 +563,10 @@ static void free_string_list(char **stringList, uint32_t nListItems)
 /**
  * @brief Get the database server list object
  *
- * @param opts          FreshClam options struct.
- * @param serverList    [out] List of servers.
- * @param nServers      [out] Number of servers in list.
- * @param bPrivate      [out] Non-zero if PrivateMirror servers were selected.
+ * @param opts              FreshClam options struct.
+ * @param[out]  serverList  List of servers.
+ * @param[out]  nServers    Number of servers in list.
+ * @param[out]  bPrivate    Non-zero if PrivateMirror servers were selected.
  * @return fc_error_t
  */
 static fc_error_t get_database_server_list(
@@ -656,12 +664,12 @@ done:
 /**
  * @brief Get a list of strings for a given repeatable opt argument.
  *
- * @param opt           optstruct of repeatable argument to collect in a list.
- * @param stringList    [out] String list.
- * @param nListItems    [out] Number of strings in list.
- * @return fc_error_t   FC_SUCCESS if success.
- * @return fc_error_t   FC_EARG if invalid args passed to function.
- * @return fc_error_t   FC_EMEM if failed to allocate memory.
+ * @param opt               optstruct of repeatable argument to collect in a list.
+ * @param[out] stringList   String list.
+ * @param[out] nListItems   Number of strings in list.
+ * @return fc_error_t       FC_SUCCESS if success.
+ * @return fc_error_t       FC_EARG if invalid args passed to function.
+ * @return fc_error_t       FC_EMEM if failed to allocate memory.
  */
 static fc_error_t get_string_list(const struct optstruct *opt, char ***stringList, uint32_t *nListItems)
 {
@@ -760,7 +768,7 @@ static fc_error_t initialize(struct optstruct *opts)
                 if (errno == 0) {
                     logg("Create the \"%s\" user account for freshclam to use, or set the DatabaseOwner config option in freshclam.conf to a different user.\n",
                          optget(opts, "DatabaseOwner")->strarg);
-                    logg("For more information, see https://www.clamav.net/documents/installing-clamav-on-unix-linux-macos-from-source\n");
+                    logg("For more information, see https://docs.clamav.net/manual/Installing/Installing-from-source-Unix.html\n");
                 } else {
                     logg("An unexpected error occurred when attempting to query the \"%s\" user account.\n",
                          optget(opts, "DatabaseOwner")->strarg);
@@ -927,8 +935,24 @@ static fc_error_t initialize(struct optstruct *opts)
         logg("Connecting via %s\n", fcConfig.proxyServer);
     }
 
-    if (optget(opts, "HTTPUserAgent")->enabled)
-        fcConfig.userAgent = optget(opts, "HTTPUserAgent")->strarg;
+    if (optget(opts, "HTTPUserAgent")->enabled) {
+
+        if (!(optget(opts, "PrivateMirror")->enabled) &&
+            (optget(opts, "DatabaseMirror")->enabled) &&
+            (strstr(optget(opts, "DatabaseMirror")->strarg, "clamav.net"))) {
+            /*
+             * Using the official project CDN.
+             */
+            logg("In an effort to reduce CDN data costs, HTTPUserAgent may not be used when updating from clamav.net.\n");
+            logg("The HTTPUserAgent specified in your config will be ignored so that FreshClam is not blocked by the CDN.\n");
+            logg("If ClamAV's user agent is not allowed through your firewall/proxy, please contact your network administrator.\n\n");
+        } else {
+            /*
+             * Using some other CDN or private mirror.
+             */
+            fcConfig.userAgent = optget(opts, "HTTPUserAgent")->strarg;
+        }
+    }
 
     fcConfig.maxAttempts    = optget(opts, "MaxAttempts")->numarg;
     fcConfig.connectTimeout = optget(opts, "ConnectTimeout")->numarg;
@@ -965,11 +989,11 @@ done:
  *
  * TODO: Implement system to query list of available standard and optional databases.
  *
- * @param standardDatabases  [out] Standard database string list.
- * @param nStandardDatabases [out] Number of standard databases in list.
- * @param optionalDatabases  [out] Optional database string list.
- * @param nOptionalDatabases [out] Number of optional databases in list.
- * @return fc_error_t        FC_SUCCESS if all databases upddated successfully.
+ * @param[out] standardDatabases    Standard database string list.
+ * @param[out] nStandardDatabases   Number of standard databases in list.
+ * @param[out] optionalDatabases    Optional database string list.
+ * @param[out] nOptionalDatabases   Number of optional databases in list.
+ * @return fc_error_t               FC_SUCCESS if all databases upddated successfully.
  */
 fc_error_t get_official_database_lists(
     char ***standardDatabases,
@@ -1045,8 +1069,8 @@ done:
  * @param nOptIns               Number of opt-in database strings in list.
  * @param optOutList            List of standard databases that are not desired.
  * @param nOptOuts              Number of opt-out database strings in list.
- * @param databaseList          [out] String list of desired databases.
- * @param nDatabases            [out] Number of desired databases in list.
+ * @param[out] databaseList     String list of desired databases.
+ * @param[out] nDatabases       Number of desired databases in list.
  * @return fc_error_t
  */
 fc_error_t select_from_official_databases(
@@ -1180,9 +1204,9 @@ done:
  *
  * @param specificDatabaseList  List of desired databases.
  * @param nSpecificDatabases    Number of databases in list.
- * @param databaseList          [out] String list of desired databases.
- * @param nDatabases            [out] Number of desired databases in list.
- * @param bCustom               [out] "custom" selected.
+ * @param[out] databaseList     String list of desired databases.
+ * @param[out] nDatabases       Number of desired databases in list.
+ * @param[out] bCustom          "custom" selected.
  * @return fc_error_t
  */
 fc_error_t select_specific_databases(
@@ -1580,6 +1604,22 @@ int main(int argc, char **argv)
         goto done;
     }
 
+#ifdef _WIN32
+
+    if (optget(opts, "install-service")->enabled) {
+        svc_install("freshclam", "ClamAV FreshClam",
+                    "Updates virus pattern database for ClamAV");
+        optfree(opts);
+        return 0;
+    }
+
+    if (optget(opts, "uninstall-service")->enabled) {
+        svc_uninstall("freshclam", 1);
+        optfree(opts);
+        return 0;
+    }
+#endif
+
     /* check foreground option from command line to override config file */
     for (i = 0; i < argc; i += 1) {
         if ((memcmp(argv[i], "--foreground", 12) == 0) || (memcmp(argv[i], "-F", 2) == 0)) {
@@ -1864,6 +1904,14 @@ int main(int argc, char **argv)
         }
 #endif
 
+#ifdef _WIN32
+        if (optget(opts, "service-mode")->enabled) {
+            mprintf_disabled = 1;
+            svc_register("freshclam");
+            svc_ready();
+        }
+#endif
+
         /* Write PID of daemon process to pidfile. */
         if ((opt = optget(opts, "PidFile"))->enabled) {
             g_pidfile = opt->strarg;
@@ -1888,6 +1936,36 @@ int main(int argc, char **argv)
         logFileOpt = optget(opts, "UpdateLogFile");
         if (logFileOpt->enabled) {
             logFileName = logFileOpt->strarg;
+        }
+
+        /*
+         * freshclam may have created the freshclam.dat file with as root
+         * if run in daemon-mode, so we should give ownership to the
+         * DatabaseOwner if we're supposed to drop privileges..
+         */
+        if ((0 == geteuid()) && (NULL != optget(opts, "DatabaseOwner")->strarg)) {
+            struct passwd *user = NULL;
+            STATBUF sb;
+
+            if ((user = getpwnam(optget(opts, "DatabaseOwner")->strarg)) == NULL) {
+                logg("^Can't get information about user %s.\n", optget(opts, "DatabaseOwner")->strarg);
+                fprintf(stderr, "ERROR: Can't get information about user %s.\n", optget(opts, "DatabaseOwner")->strarg);
+                status = FC_ECONFIG;
+                goto done;
+            }
+
+            /*Change ownership of the freshclam DAT file to the user we are going to switch to.*/
+            if (CLAMSTAT("freshclam.dat", &sb) != -1) {
+                int ret = lchown("freshclam.dat", user->pw_uid, user->pw_gid);
+                if (ret) {
+                    fprintf(stderr, "ERROR: lchown to user '%s' failed on freshclam.dat\n", user->pw_name);
+                    fprintf(stderr, "Error was '%s'\n", strerror(errno));
+                    logg("^lchown to user '%s' failed on freshclam.dat.  Error was '%s'\n",
+                         user->pw_name, strerror(errno));
+                    status = FC_ECONFIG;
+                    goto done;
+                }
+            }
         }
 
         /*

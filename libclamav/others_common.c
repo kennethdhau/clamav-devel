@@ -190,7 +190,7 @@ void *cli_malloc(size_t size)
     void *alloc;
 
     if (!size || size > CLI_MAX_ALLOCATION) {
-        cli_errmsg("cli_malloc(): Attempt to allocate %lu bytes. Please report to https://bugzilla.clamav.net\n", (unsigned long int)size);
+        cli_errmsg("cli_malloc(): Attempt to allocate %lu bytes. Please report to https://github.com/Cisco-Talos/clamav/issues\n", (unsigned long int)size);
         return NULL;
     }
 
@@ -209,7 +209,7 @@ void *cli_calloc(size_t nmemb, size_t size)
     void *alloc;
 
     if (!nmemb || !size || size > CLI_MAX_ALLOCATION || nmemb > CLI_MAX_ALLOCATION || (nmemb * size > CLI_MAX_ALLOCATION)) {
-        cli_errmsg("cli_calloc(): Attempt to allocate %lu bytes. Please report to https://bugzilla.clamav.net\n", (unsigned long int)nmemb * size);
+        cli_errmsg("cli_calloc(): Attempt to allocate %lu bytes. Please report to https://github.com/Cisco-Talos/clamav/issues\n", (unsigned long int)nmemb * size);
         return NULL;
     }
 
@@ -228,7 +228,7 @@ void *cli_realloc(void *ptr, size_t size)
     void *alloc;
 
     if (!size || size > CLI_MAX_ALLOCATION) {
-        cli_errmsg("cli_realloc(): Attempt to allocate %lu bytes. Please report to https://bugzilla.clamav.net\n", (unsigned long int)size);
+        cli_errmsg("cli_realloc(): Attempt to allocate %lu bytes. Please report to https://github.com/Cisco-Talos/clamav/issues\n", (unsigned long int)size);
         return NULL;
     }
 
@@ -247,7 +247,7 @@ void *cli_realloc2(void *ptr, size_t size)
     void *alloc;
 
     if (!size || size > CLI_MAX_ALLOCATION) {
-        cli_errmsg("cli_realloc2(): Attempt to allocate %lu bytes. Please report to https://bugzilla.clamav.net\n", (unsigned long int)size);
+        cli_errmsg("cli_realloc2(): Attempt to allocate %lu bytes. Please report to https://github.com/Cisco-Talos/clamav/issues\n", (unsigned long int)size);
         return NULL;
     }
 
@@ -268,7 +268,7 @@ char *cli_strdup(const char *s)
     char *alloc;
 
     if (s == NULL) {
-        cli_errmsg("cli_strdup(): s == NULL. Please report to https://bugzilla.clamav.net\n");
+        cli_errmsg("cli_strdup(): s == NULL. Please report to https://github.com/Cisco-Talos/clamav/issues\n");
         return NULL;
     }
 
@@ -332,7 +332,7 @@ const char *cli_ctime(const time_t *timep, char *buf, const size_t bufsize)
 /**
  * @brief  Try hard to read the requested number of bytes
  *
- * @param fd        File desriptor to read from.
+ * @param fd        File descriptor to read from.
  * @param buff      Buffer to read data into.
  * @param count     # of bytes to read.
  * @return size_t   # of bytes read.
@@ -574,6 +574,20 @@ static int get_filetype(const char *fname, int flags, int need_stat,
     return stated;
 }
 
+/**
+ * @brief Determine the file type and pass the metadata to the callback as the "reason".
+ *
+ * The callback may end up doing something or doing nothing, depending on the reason.
+ *
+ * @param fname         The file path
+ * @param flags         CLI_FTW_* bitflag field
+ * @param[out] statbuf  the stat metadata for the file.
+ * @param[out] stated   1 if statbuf contains stat info, 0 if not. -1 if there was a stat error.
+ * @param[out] ft       will indicate if the file was skipped based on the file type.
+ * @param callback      the callback (E.g. function that may scan the file)
+ * @param data          callback data
+ * @return cl_error_t
+ */
 static cl_error_t handle_filetype(const char *fname, int flags,
                                   STATBUF *statbuf, int *stated, enum filetype *ft,
                                   cli_ftw_cb callback, struct cli_ftw_cbdata *data)
@@ -616,7 +630,7 @@ done:
     return status;
 }
 
-static int cli_ftw_dir(const char *dirname, int flags, int maxdepth, cli_ftw_cb callback, struct cli_ftw_cbdata *data, cli_ftw_pathchk pathchk);
+static cl_error_t cli_ftw_dir(const char *dirname, int flags, int maxdepth, cli_ftw_cb callback, struct cli_ftw_cbdata *data, cli_ftw_pathchk pathchk);
 static int handle_entry(struct dirent_data *entry, int flags, int maxdepth, cli_ftw_cb callback, struct cli_ftw_cbdata *data, cli_ftw_pathchk pathchk)
 {
     if (!entry->is_dir) {
@@ -630,10 +644,11 @@ cl_error_t cli_ftw(char *path, int flags, int maxdepth, cli_ftw_cb callback, str
 {
     cl_error_t status = CL_EMEM;
     STATBUF statbuf;
-    enum filetype ft = ft_unknown;
-    struct dirent_data entry;
-    int stated      = 0;
-    char *path_copy = NULL;
+    enum filetype ft               = ft_unknown;
+    struct dirent_data entry       = {0};
+    int stated                     = 0;
+    char *filename_for_callback    = NULL;
+    char *filename_for_handleentry = NULL;
 
     if (((flags & CLI_FTW_TRIM_SLASHES) || pathchk) && path[0] && path[1]) {
         char *pathend;
@@ -652,11 +667,14 @@ cl_error_t cli_ftw(char *path, int flags, int maxdepth, cli_ftw_cb callback, str
         goto done;
     }
 
+    /* Determine if the file should be skipped (special file or symlink).
+       This will also get the stat metadata. */
     status = handle_filetype(path, flags, &statbuf, &stated, &ft, callback, data);
     if (status != CL_SUCCESS) {
         goto done;
     }
 
+    /* Bail out if the file should be skipped. */
     if (ft_skipped(ft)) {
         status = CL_SUCCESS;
         goto done;
@@ -665,38 +683,63 @@ cl_error_t cli_ftw(char *path, int flags, int maxdepth, cli_ftw_cb callback, str
     entry.statbuf = stated ? &statbuf : NULL;
     entry.is_dir  = ft == ft_directory;
 
+    /*
+     * handle_entry() doesn't call the callback for directories, so we'll call it now first.
+     */
     if (entry.is_dir) {
-        path_copy = cli_strdup(path);
-        if (NULL == path_copy) {
+        /* Allocate the filename for the callback function. TODO: this FTW code is spaghetti, refactor. */
+        filename_for_callback = cli_strdup(path);
+        if (NULL == filename_for_callback) {
             goto done;
         }
 
-        status = callback(entry.statbuf, path_copy, path, visit_directory_toplev, data);
+        status = callback(entry.statbuf, filename_for_callback, path, visit_directory_toplev, data);
+
+        filename_for_callback = NULL; // free'd by the callback
+
         if (status != CL_SUCCESS) {
             goto done;
         }
     }
 
-    path_copy = cli_strdup(path);
-    if (NULL == path_copy) {
-        goto done;
+    /*
+     * Now call handle_entry() to either call the callback for files,
+     * or recurse deeper into the file tree walk.
+     * TODO: Recursion is bad, this whole thing should be iterative
+     */
+    if (entry.is_dir) {
+        entry.dirname = path;
+    } else {
+        /* Allocate the filename for the callback function within the handle_entry function. TODO: this FTW code is spaghetti, refactor. */
+        filename_for_handleentry = cli_strdup(path);
+        if (NULL == filename_for_handleentry) {
+            goto done;
+        }
+
+        entry.filename = filename_for_handleentry;
     }
-
-    entry.filename = entry.is_dir ? NULL : path_copy;
-    entry.dirname  = entry.is_dir ? path : NULL;
-
     status = handle_entry(&entry, flags, maxdepth, callback, data, pathchk);
 
+    filename_for_handleentry = NULL; // free'd by the callback call in handle_entry()
+
 done:
+    if (NULL != filename_for_callback) {
+        /* Free-check just in case someone injects additional calls and error handling before callback(). */
+        free(filename_for_callback);
+    }
+    if (NULL != filename_for_handleentry) {
+        /* Free-check just in case someone injects additional calls and error handling before handle_entry(). */
+        free(filename_for_handleentry);
+    }
     return status;
 }
 
-static int cli_ftw_dir(const char *dirname, int flags, int maxdepth, cli_ftw_cb callback, struct cli_ftw_cbdata *data, cli_ftw_pathchk pathchk)
+static cl_error_t cli_ftw_dir(const char *dirname, int flags, int maxdepth, cli_ftw_cb callback, struct cli_ftw_cbdata *data, cli_ftw_pathchk pathchk)
 {
     DIR *dd;
     struct dirent_data *entries = NULL;
     size_t i, entries_cnt = 0;
-    int ret;
+    cl_error_t ret;
 
     if (maxdepth < 0) {
         /* exceeded recursion limit */
@@ -824,8 +867,11 @@ static int cli_ftw_dir(const char *dirname, int flags, int maxdepth, cli_ftw_cb 
                     free(entry->filename);
                 if (entry->statbuf)
                     free(entry->statbuf);
-                if (ret != CL_SUCCESS)
+                if (ret != CL_SUCCESS) {
+                    /* Something went horribly wrong, Skip the rest of the files */
+                    cli_errmsg("File tree walk aborted.\n");
                     break;
+                }
             }
             for (i++; i < entries_cnt; i++) {
                 struct dirent_data *entry = &entries[i];
@@ -1115,14 +1161,14 @@ char *cli_newfilepath(const char *dir, const char *fname)
 
     mdir = dir ? dir : cli_gettmpdir();
 
-    if (!fname) {
-        cli_dbgmsg("cli_newfilepath('%s'): out of memory\n", mdir);
+    if (NULL == fname) {
+        cli_dbgmsg("cli_newfilepath('%s'): fname argument must not be NULL\n", mdir);
         return NULL;
     }
 
     len      = strlen(mdir) + strlen(PATHSEP) + strlen(fname) + 1; /* mdir/fname\0 */
     fullpath = (char *)cli_calloc(len, sizeof(char));
-    if (!fullpath) {
+    if (NULL == fullpath) {
         cli_dbgmsg("cli_newfilepath('%s'): out of memory\n", mdir);
         return NULL;
     }
@@ -1134,9 +1180,16 @@ char *cli_newfilepath(const char *dir, const char *fname)
 
 cl_error_t cli_newfilepathfd(const char *dir, char *fname, char **name, int *fd)
 {
+    if (NULL == name || NULL == fname || NULL == fd) {
+        cli_dbgmsg("cli_newfilepathfd('%s'): invalid NULL arguments\n", dir);
+        return CL_EARG;
+    }
+
     *name = cli_newfilepath(dir, fname);
-    if (!*name)
+    if (!*name) {
+        cli_dbgmsg("cli_newfilepathfd('%s'): out of memory\n", dir);
         return CL_EMEM;
+    }
 
     *fd = open(*name, O_RDWR | O_CREAT | O_TRUNC | O_BINARY | O_EXCL, S_IRUSR | S_IWUSR);
     /*
@@ -1192,7 +1245,7 @@ cl_error_t cli_gentempfd(const char *dir, char **name, int *fd)
     return cli_gentempfd_with_prefix(dir, NULL, name, fd);
 }
 
-cl_error_t cli_gentempfd_with_prefix(const char *dir, char *prefix, char **name, int *fd)
+cl_error_t cli_gentempfd_with_prefix(const char *dir, const char *prefix, char **name, int *fd)
 {
     *name = cli_gentemp_with_prefix(dir, prefix);
     if (!*name)
@@ -1236,6 +1289,81 @@ int cli_regcomp(regex_t *preg, const char *pattern, int cflags)
     }
     return cli_regcomp_real(preg, pattern, cflags);
 }
+
+#ifdef _WIN32
+cl_error_t cli_get_filepath_from_handle(HANDLE hFile, char **filepath)
+{
+    cl_error_t status               = CL_EARG;
+    char *evaluated_filepath        = NULL;
+    DWORD dwRet                     = 0;
+    WCHAR *long_evaluated_filepathW = NULL;
+    char *long_evaluated_filepathA  = NULL;
+    size_t evaluated_filepath_len   = 0;
+    cl_error_t conv_result;
+
+    if (NULL == filepath) {
+        cli_errmsg("cli_get_filepath_from_handle: Invalid args.\n");
+        goto done;
+    }
+
+    dwRet = GetFinalPathNameByHandleW((HANDLE)hFile, NULL, 0, VOLUME_NAME_DOS);
+    if (dwRet == 0) {
+        cli_dbgmsg("cli_get_filepath_from_handle: Failed to resolve handle\n");
+        status = CL_EOPEN;
+        goto done;
+    }
+
+    long_evaluated_filepathW = calloc(dwRet + 1, sizeof(WCHAR));
+    if (NULL == long_evaluated_filepathW) {
+        cli_errmsg("cli_get_filepath_from_filedesc: Failed to allocate %u bytes to store filename\n", dwRet + 1);
+        status = CL_EMEM;
+        goto done;
+    }
+
+    dwRet = GetFinalPathNameByHandleW((HANDLE)hFile, long_evaluated_filepathW, dwRet + 1, VOLUME_NAME_DOS);
+    if (dwRet == 0) {
+        cli_dbgmsg("cli_get_filepath_from_handle: Failed to resolve handle\n");
+        status = CL_EOPEN;
+        goto done;
+    }
+
+    if (0 == wcsncmp(L"\\\\?\\UNC", long_evaluated_filepathW, wcslen(L"\\\\?\\UNC"))) {
+        conv_result = cli_codepage_to_utf8(
+            long_evaluated_filepathW,
+            (wcslen(long_evaluated_filepathW)) * sizeof(WCHAR),
+            CODEPAGE_UTF16_LE,
+            &evaluated_filepath,
+            &evaluated_filepath_len);
+        if (CL_SUCCESS != conv_result) {
+            cli_errmsg("cli_get_filepath_from_handle: Failed to convert UTF16_LE filename to UTF8\n", dwRet + 1);
+            status = CL_EOPEN;
+            goto done;
+        }
+    } else {
+        conv_result = cli_codepage_to_utf8(
+            long_evaluated_filepathW + wcslen(L"\\\\?\\"),
+            (wcslen(long_evaluated_filepathW) - wcslen(L"\\\\?\\")) * sizeof(WCHAR),
+            CODEPAGE_UTF16_LE,
+            &evaluated_filepath,
+            &evaluated_filepath_len);
+        if (CL_SUCCESS != conv_result) {
+            cli_errmsg("cli_get_filepath_from_handle: Failed to convert UTF16_LE filename to UTF8\n", dwRet + 1);
+            status = CL_EOPEN;
+            goto done;
+        }
+    }
+
+    cli_dbgmsg("cli_get_filepath_from_handle: File path for handle %p is: %s\n", (void *)hFile, evaluated_filepath);
+    status    = CL_SUCCESS;
+    *filepath = evaluated_filepath;
+
+done:
+    if (NULL != long_evaluated_filepathW) {
+        free(long_evaluated_filepathW);
+    }
+    return status;
+}
+#endif
 
 cl_error_t cli_get_filepath_from_filedesc(int desc, char **filepath)
 {
@@ -1297,63 +1425,19 @@ cl_error_t cli_get_filepath_from_filedesc(int desc, char **filepath)
     }
 
 #elif _WIN32
-    DWORD dwRet                     = 0;
-    intptr_t hFile                  = _get_osfhandle(desc);
-    WCHAR *long_evaluated_filepathW = NULL;
-    char *long_evaluated_filepathA  = NULL;
-    size_t evaluated_filepath_len   = 0;
-    cl_error_t conv_result;
+    intptr_t hFile = _get_osfhandle(desc);
+    cl_error_t handle_result;
 
     if (NULL == filepath) {
         cli_errmsg("cli_get_filepath_from_filedesc: Invalid args.\n");
         goto done;
     }
 
-    dwRet = GetFinalPathNameByHandleW((HANDLE)hFile, NULL, 0, VOLUME_NAME_DOS);
-    if (dwRet == 0) {
-        cli_dbgmsg("cli_get_filepath_from_filedesc: Failed to resolve filename for descriptor %d\n", desc);
+    handle_result = cli_get_filepath_from_handle((HANDLE)hFile, &evaluated_filepath);
+    if (CL_SUCCESS != handle_result) {
+        cli_errmsg("cli_get_filepath_from_filedesc: Failed to get file path from handle\n");
         status = CL_EOPEN;
         goto done;
-    }
-
-    long_evaluated_filepathW = calloc(dwRet + 1, sizeof(WCHAR));
-    if (NULL == long_evaluated_filepathW) {
-        cli_errmsg("cli_get_filepath_from_filedesc: Failed to allocate %u bytes to store filename\n", dwRet + 1);
-        status = CL_EMEM;
-        goto done;
-    }
-
-    dwRet = GetFinalPathNameByHandleW((HANDLE)hFile, long_evaluated_filepathW, dwRet + 1, VOLUME_NAME_DOS);
-    if (dwRet == 0) {
-        cli_dbgmsg("cli_get_filepath_from_filedesc: Failed to resolve filename for descriptor %d\n", desc);
-        status = CL_EOPEN;
-        goto done;
-    }
-
-    if (0 == wcsncmp(L"\\\\?\\UNC", long_evaluated_filepathW, wcslen(L"\\\\?\\UNC"))) {
-        conv_result = cli_codepage_to_utf8(
-            long_evaluated_filepathW,
-            (wcslen(long_evaluated_filepathW)) * sizeof(WCHAR),
-            CODEPAGE_UTF16_LE,
-            &evaluated_filepath,
-            &evaluated_filepath_len);
-        if (CL_SUCCESS != conv_result) {
-            cli_errmsg("cli_get_filepath_from_filedesc: Failed to convert UTF16_LE filename to UTF8\n", dwRet + 1);
-            status = CL_EOPEN;
-            goto done;
-        }
-    } else {
-        conv_result = cli_codepage_to_utf8(
-            long_evaluated_filepathW + wcslen(L"\\\\?\\"),
-            (wcslen(long_evaluated_filepathW) - wcslen(L"\\\\?\\")) * sizeof(WCHAR),
-            CODEPAGE_UTF16_LE,
-            &evaluated_filepath,
-            &evaluated_filepath_len);
-        if (CL_SUCCESS != conv_result) {
-            cli_errmsg("cli_get_filepath_from_filedesc: Failed to convert UTF16_LE filename to UTF8\n", dwRet + 1);
-            status = CL_EOPEN;
-            goto done;
-        }
     }
 
 #else
@@ -1369,12 +1453,6 @@ cl_error_t cli_get_filepath_from_filedesc(int desc, char **filepath)
     *filepath = evaluated_filepath;
 
 done:
-
-#ifdef _WIN32
-    if (NULL != long_evaluated_filepathW) {
-        free(long_evaluated_filepathW);
-    }
-#endif
     return status;
 }
 
@@ -1383,7 +1461,7 @@ cl_error_t cli_realpath(const char *file_name, char **real_filename)
     char *real_file_path = NULL;
     cl_error_t status    = CL_EARG;
 #ifdef _WIN32
-    int desc = -1;
+    HANDLE hFile = INVALID_HANDLE_VALUE;
 #endif
 
     cli_dbgmsg("Checking realpath of %s\n", file_name);
@@ -1404,14 +1482,20 @@ cl_error_t cli_realpath(const char *file_name, char **real_filename)
     status = CL_SUCCESS;
 
 #else
-
-    if ((desc = safe_open(file_name, O_RDONLY | O_BINARY)) == -1) {
-        cli_warnmsg("Can't open file %s: %s\n", file_name, strerror(errno));
+    hFile = CreateFileA(file_name,                  // file to open
+                        GENERIC_READ,               // open for reading
+                        FILE_SHARE_READ,            // share for reading
+                        NULL,                       // default security
+                        OPEN_EXISTING,              // existing file only
+                        FILE_FLAG_BACKUP_SEMANTICS, // may be a directory
+                        NULL);                      // no attr. template
+    if (hFile == INVALID_HANDLE_VALUE) {
+        cli_warnmsg("Can't open file %s: %d\n", file_name, GetLastError());
         status = CL_EOPEN;
         goto done;
     }
 
-    status = cli_get_filepath_from_filedesc(desc, &real_file_path);
+    status = cli_get_filepath_from_handle(hFile, &real_file_path);
 
 #endif
 
@@ -1420,8 +1504,8 @@ cl_error_t cli_realpath(const char *file_name, char **real_filename)
 done:
 
 #ifdef _WIN32
-    if (-1 != desc) {
-        close(desc);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        CloseHandle(hFile);
     }
 #endif
 

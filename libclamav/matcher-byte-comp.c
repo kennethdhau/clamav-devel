@@ -460,7 +460,7 @@ cl_error_t cli_bcomp_addpatt(struct cli_matcher *root, const char *virname, cons
 cl_error_t cli_bcomp_scanbuf(const unsigned char *buffer, size_t buffer_length, const char **virname, struct cli_ac_result **res, const struct cli_matcher *root, struct cli_ac_data *mdata, cli_ctx *ctx)
 {
 
-    int64_t i = 0, ret = CL_SUCCESS;
+    int64_t i = 0, val = 0, ret = CL_SUCCESS;
     uint32_t lsigid, ref_subsigid;
     uint32_t offset              = 0;
     uint8_t viruses_found        = 0;
@@ -469,7 +469,7 @@ cl_error_t cli_bcomp_scanbuf(const unsigned char *buffer, size_t buffer_length, 
 
     uint32_t evalcnt = 0;
     uint64_t evalids = 0;
-    char *subsigid   = NULL;
+    char subsigid[3];
 
     if (!(root) || !(root->bcomp_metas) || !(root->bcomp_metatable) || !(mdata) || !(mdata->offmatrix) || !(ctx)) {
         return CL_SUCCESS;
@@ -484,12 +484,12 @@ cl_error_t cli_bcomp_scanbuf(const unsigned char *buffer, size_t buffer_length, 
         /* check to see if we are being run in sigtool or not */
         if (bcomp->lsigid[0]) {
 
-            subsigid = cli_calloc(3, sizeof(char));
             snprintf(subsigid, 3, "%hu", bcomp->ref_subsigid);
 
             /* verify the ref_subsigid */
-            if (cli_ac_chklsig(subsigid, subsigid + strlen(subsigid),
-                               mdata->lsigcnt[bcomp->lsigid[1]], &evalcnt, &evalids, 0) != 1) {
+            val = cli_ac_chklsig(subsigid, subsigid + strlen(subsigid), mdata->lsigcnt[bcomp->lsigid[1]], &evalcnt, &evalids, 0);
+
+            if (val != 1) {
                 bcm_dbgmsg("cli_bcomp_scanbuf: could not verify a match for lsig reference subsigid (%s)\n", subsigid);
                 continue;
             }
@@ -544,11 +544,6 @@ cl_error_t cli_bcomp_scanbuf(const unsigned char *buffer, size_t buffer_length, 
                 ret = cli_append_virus(ctx, (const char *)bcomp->virname);
             }
         }
-    }
-
-    if (subsigid) {
-        free(subsigid);
-        subsigid = NULL;
     }
 
     if (ret == CL_SUCCESS && viruses_found) {
@@ -898,7 +893,6 @@ unsigned char *cli_bcomp_normalize_buffer(const unsigned char *buffer, uint32_t 
     uint32_t pad              = 0;
     uint32_t i                = 0;
     uint16_t opt_val          = 0;
-    uint16_t hex              = 0;
     unsigned char *tmp_buffer = NULL;
 
     if (!buffer) {
@@ -976,14 +970,10 @@ unsigned char *cli_bcomp_normalize_buffer(const unsigned char *buffer, uint32_t 
                 if (((int32_t)norm_len - (int32_t)i) - 2 >= 0) {
                     /* 0000BA -> B0000A */
                     if (isxdigit(hex_buffer[norm_len - i - 2]) || toupper(hex_buffer[norm_len - i - 2]) == 'X') {
-                        if (isxdigit(hex_buffer[norm_len - i - 2])) {
-                            hex = 1;
-                        }
                         tmp_buffer[i] = hex_buffer[norm_len - i - 2];
                     } else {
                         /* non-hex detected, our current buffer is invalid so zero it out and continue */
                         memset(tmp_buffer, '0', norm_len + 1);
-                        hex = 0;
                         /* nibbles after this are non-good, so skip them */
                         continue;
                     }
@@ -991,14 +981,10 @@ unsigned char *cli_bcomp_normalize_buffer(const unsigned char *buffer, uint32_t 
 
                 /* 0000BA -> 0A00B0 */
                 if (isxdigit(hex_buffer[norm_len - i - 1]) || toupper(hex_buffer[norm_len - i - 1]) == 'X') {
-                    if (isxdigit(hex_buffer[norm_len - i - 2])) {
-                        hex = 1;
-                    }
                     tmp_buffer[i + 1] = hex_buffer[norm_len - i - 1];
                 } else {
                     /* non-hex detected, our current buffer is invalid so zero it out and continue */
                     memset(tmp_buffer, '0', norm_len + 1);
-                    hex = 0;
                 }
             }
         }

@@ -1676,7 +1676,7 @@ cl_error_t cli_ac_chkmacro(struct cli_matcher *root, struct cli_ac_data *data, u
 {
     const struct cli_lsig_tdb *tdb = &root->ac_lsigtable[lsigid1]->tdb;
     unsigned i;
-    int rc;
+    cl_error_t rc;
 
     /* Loop through all subsigs, and if they are tied to macros check that the
      * macro matched at a correct distance */
@@ -1711,7 +1711,8 @@ cl_error_t cli_ac_scanbuff(
     uint32_t **offmatrix, swp;
     int type = CL_CLEAN;
     struct cli_ac_result *newres;
-    int rc;
+    cl_error_t rc;
+    cl_error_t ret;
 
     if (!root->ac_root)
         return CL_CLEAN;
@@ -1923,8 +1924,10 @@ cl_error_t cli_ac_scanbuff(
                                         continue;
                                     } else {
                                         if (ctx && SCAN_ALLMATCHES) {
-                                            cli_append_virus(ctx, (const char *)pt->virname);
-                                            viruses_found = 1;
+                                            ret = cli_append_virus(ctx, (const char *)pt->virname);
+                                            if (ret == CL_VIRUS) {
+                                                viruses_found = 1;
+                                            }
                                         }
                                         if (virname)
                                             *virname = pt->virname;
@@ -1978,8 +1981,10 @@ cl_error_t cli_ac_scanbuff(
                                     continue;
                                 } else {
                                     if (ctx && SCAN_ALLMATCHES) {
-                                        cli_append_virus(ctx, (const char *)pt->virname);
-                                        viruses_found = 1;
+                                        ret = cli_append_virus(ctx, (const char *)pt->virname);
+                                        if (ret == CL_VIRUS) {
+                                            viruses_found = 1;
+                                        }
                                     }
 
                                     if (virname)
@@ -2910,7 +2915,10 @@ cl_error_t cli_ac_addsig(struct cli_matcher *root, const char *virname, const ch
         return ret;
     }
 
-    if (new->offdata[0] != CLI_OFF_ANY && new->offdata[0] != CLI_OFF_ABSOLUTE && new->offdata[0] != CLI_OFF_MACRO) {
+    if ((new->offdata[0] != CLI_OFF_ANY) &&
+        (new->offdata[0] != CLI_OFF_ABSOLUTE) &&
+        (new->offdata[0] != CLI_OFF_MACRO)) {
+
         root->ac_reloff = (struct cli_ac_patt **)MPOOL_REALLOC2(root->mempool, root->ac_reloff, (root->ac_reloff_num + 1) * sizeof(struct cli_ac_patt *));
         if (!root->ac_reloff) {
             cli_errmsg("cli_ac_addsig: Can't allocate memory for root->ac_reloff\n");

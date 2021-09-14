@@ -31,6 +31,8 @@ clang-format -i -verbose libclamav/jsparse/*.h
 clang-format -i -verbose libclamav/lzw/*.c
 clang-format -i -verbose libclamav/lzw/*.h
 clang-format -i -verbose libclamav/nsis/nulsft.*
+clang-format -i -verbose libclamav/c++/*.cpp
+clang-format -i -verbose libclamav/c++/*.h
 clang-format -i -verbose libclamunrar_iface/*.cpp
 clang-format -i -verbose libclamunrar_iface/*.h
 clang-format -i -verbose libfreshclam/*.c
@@ -48,7 +50,7 @@ clang-format -i -verbose unit_tests/*.h
 clang-format -i -verbose win32/compat/*.c
 clang-format -i -verbose win32/compat/*.h
 
-# Undo changes to specific files (whitelist)
+# Undo changes to specific files that we don't really want to reformat
 git checkout libclamav/iana_cctld.h
 git checkout libclamav/bytecode_api_decl.c
 git checkout libclamav/bytecode_api_impl.h

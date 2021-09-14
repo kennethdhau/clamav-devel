@@ -250,12 +250,12 @@ fc_error_t fc_initialize(fc_config *fcConfig)
 
     g_bCompressLocalDatabase = fcConfig->bCompressLocalDatabase;
 
-    /* Load or create mirrors.dat */
-    if (FC_SUCCESS != load_mirrors_dat()) {
-        logg("*Failed to load mirrors.dat; will create a new mirrors.dat\n");
+    /* Load or create freshclam.dat */
+    if (FC_SUCCESS != load_freshclam_dat()) {
+        logg("*Failed to load freshclam.dat; will create a new freshclam.dat\n");
 
-        if (FC_SUCCESS != new_mirrors_dat()) {
-            logg("^Failed to create a new mirrors.dat!\n");
+        if (FC_SUCCESS != new_freshclam_dat()) {
+            logg("^Failed to create a new freshclam.dat!\n");
             status = FC_EINIT;
             goto done;
         }
@@ -308,9 +308,9 @@ void fc_cleanup(void)
         free(g_tempDirectory);
         g_tempDirectory = NULL;
     }
-    if (NULL != g_mirrorsDat) {
-        free(g_mirrorsDat);
-        g_mirrorsDat = NULL;
+    if (NULL != g_freshclamDat) {
+        free(g_freshclamDat);
+        g_freshclamDat = NULL;
     }
 }
 
@@ -451,8 +451,8 @@ fc_error_t fc_test_database(const char *dbFilename, int bBytecodeEnabled)
 done:
 
     if (NULL != engine) {
-        if (engine->domainlist_matcher && engine->domainlist_matcher->sha256_pfx_set.keys)
-            cli_hashset_destroy(&engine->domainlist_matcher->sha256_pfx_set);
+        if (engine->domain_list_matcher && engine->domain_list_matcher->sha256_pfx_set.keys)
+            cli_hashset_destroy(&engine->domain_list_matcher->sha256_pfx_set);
 
         cl_engine_free(engine);
     }
@@ -561,7 +561,7 @@ fc_error_t fc_dns_query_update_info(
 
                 logg("^Your ClamAV installation is OUTDATED!\n");
                 logg("^Local version: %s Recommended version: %s\n", version_string, reply_token);
-                logg("DON'T PANIC! Read https://www.clamav.net/documents/upgrading-clamav\n");
+                logg("DON'T PANIC! Read https://docs.clamav.net/manual/Installing.html\n");
                 *newVersion = cli_strdup(reply_token);
             }
         }
@@ -674,7 +674,7 @@ fc_error_t fc_update_database(
                     logg("   a. Running an up-to-date version of FreshClam\n");
                     logg("   b. Running FreshClam no more than once an hour\n");
                     logg("   c. If you have checked (a) and (b), please open a ticket at\n");
-                    logg("      https://bugzilla.clamav.net under the 'Mirrors' component\n");
+                    logg("      https://github.com/Cisco-Talos/clamav/issues\n");
                     logg("      and we will investigate why your network is blocked.\n");
                     status = ret;
                     goto done;
@@ -683,7 +683,7 @@ fc_error_t fc_update_database(
                 case FC_ERETRYLATER: {
                     char retry_after_string[26];
                     struct tm *tm_info;
-                    tm_info = localtime(&g_mirrorsDat->retry_after);
+                    tm_info = localtime(&g_freshclamDat->retry_after);
                     if (NULL == tm_info) {
                         logg("!Failed to query the local time for the retry-after date!\n");
                         status = FC_ERROR;
@@ -750,12 +750,12 @@ fc_error_t fc_update_databases(
 
     *nUpdated = 0;
 
-    if (g_mirrorsDat->retry_after > 0) {
-        if (g_mirrorsDat->retry_after > time(NULL)) {
+    if (g_freshclamDat->retry_after > 0) {
+        if (g_freshclamDat->retry_after > time(NULL)) {
             /* We're on cool-down, try again later. */
             char retry_after_string[26];
             struct tm *tm_info;
-            tm_info = localtime(&g_mirrorsDat->retry_after);
+            tm_info = localtime(&g_freshclamDat->retry_after);
             if (NULL == tm_info) {
                 logg("!Failed to query the local time for the retry-after date!\n");
                 status = FC_ERROR;
@@ -776,9 +776,9 @@ fc_error_t fc_update_databases(
             status = FC_SUCCESS;
             goto done;
         } else {
-            g_mirrorsDat->retry_after = 0;
+            g_freshclamDat->retry_after = 0;
             logg("^Cool-down expired, ok to try again.\n");
-            save_mirrors_dat();
+            save_freshclam_dat();
         }
     }
 
@@ -880,7 +880,7 @@ fc_error_t fc_download_url_database(
                 logg("   a. Running an up-to-date version of FreshClam\n");
                 logg("   b. Running FreshClam no more than once an hour\n");
                 logg("   c. If you have checked (a) and (b), please open a ticket at\n");
-                logg("      https://bugzilla.clamav.net under the 'Mirrors' component\n");
+                logg("      https://github.com/Cisco-Talos/clamav/issues\n");
                 logg("      and we will investigate why your network is blocked.\n");
                 status = ret;
                 goto done;
@@ -889,7 +889,7 @@ fc_error_t fc_download_url_database(
             case FC_ERETRYLATER: {
                 char retry_after_string[26];
                 struct tm *tm_info;
-                tm_info = localtime(&g_mirrorsDat->retry_after);
+                tm_info = localtime(&g_freshclamDat->retry_after);
                 if (NULL == tm_info) {
                     logg("!Failed to query the local time for the retry-after date!\n");
                     status = FC_ERROR;

@@ -200,6 +200,13 @@ const struct clam_option __clam_options[] = {
 
     {NULL, "archive-verbose", 'a', CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMSCAN, "", ""},
 
+#ifdef _WIN32
+    {NULL, "install-service", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMD | OPT_FRESHCLAM, "", ""},
+    {NULL, "uninstall-service", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMD | OPT_FRESHCLAM, "", ""},
+    {NULL, "daemon", 'd', CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMD, "", ""},
+    {NULL, "service-mode", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMD | OPT_FRESHCLAM, "", ""},
+#endif
+
     /* cmdline only - deprecated */
     {NULL, "bytecode-trust-all", 't', CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMSCAN | OPT_DEPRECATED, "", ""},
     {NULL, "http-proxy", 0, CLOPT_TYPE_STRING, NULL, 0, NULL, 0, OPT_FRESHCLAM | OPT_DEPRECATED, "", ""},
@@ -230,6 +237,12 @@ const struct clam_option __clam_options[] = {
     {NULL, "tar", 0, CLOPT_TYPE_STRING, NULL, -1, "foo", 0, OPT_CLAMSCAN | OPT_DEPRECATED, "", ""},
     {NULL, "tgz", 0, CLOPT_TYPE_STRING, NULL, -1, "foo", 0, OPT_CLAMSCAN | OPT_DEPRECATED, "", ""},
     {NULL, "deb", 0, CLOPT_TYPE_STRING, NULL, -1, "foo", 0, OPT_CLAMSCAN | OPT_DEPRECATED, "", ""},
+
+#ifdef _WIN32
+    {NULL, "memory", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMSCAN | OPT_CLAMDSCAN, "", ""},
+    {NULL, "kill", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMSCAN | OPT_CLAMDSCAN, "", ""},
+    {NULL, "unload", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMSCAN | OPT_CLAMDSCAN, "", ""},
+#endif
 
     /* config file/cmdline options */
     {"AlertExceedsMax", "alert-exceeds-max", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMD | OPT_CLAMSCAN, "", ""},
@@ -279,7 +292,7 @@ const struct clam_option __clam_options[] = {
     {"TCPSocket", NULL, 0, CLOPT_TYPE_NUMBER, MATCH_NUMBER, -1, NULL, 0, OPT_CLAMD, "A TCP port number the daemon will listen on.", "3310"},
 
     /* FIXME: add a regex for IP addr */
-    {"TCPAddr", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD, "By default clamd binds to INADDR_ANY.\nThis option allows you to restrict the TCP address and provide\nsome degree of protection from the outside world.", "127.0.0.1"},
+    {"TCPAddr", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD, "By default clamd binds to INADDR_ANY.\nThis option allows you to restrict the TCP address and provide\nsome degree of protection from the outside world.", "localhost"},
 
     {"MaxConnectionQueueLength", NULL, 0, CLOPT_TYPE_NUMBER, MATCH_NUMBER, 200, NULL, 0, OPT_CLAMD, "Maximum length the queue of pending connections may grow to.", "30"},
 
@@ -352,7 +365,7 @@ const struct clam_option __clam_options[] = {
 
     {"DetectPUA", "detect-pua", 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 0, NULL, 0, OPT_CLAMD | OPT_CLAMSCAN, "Detect Potentially Unwanted Applications.", "yes"},
 
-    {"ExcludePUA", "exclude-pua", 0, CLOPT_TYPE_STRING, NULL, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD | OPT_CLAMSCAN, "Exclude a specific PUA category. This directive can be used multiple times.\nSee https://www.clamav.net/documents/potentially-unwanted-applications-pua for the complete list of PUA\ncategories.", "NetTool\nPWTool"},
+    {"ExcludePUA", "exclude-pua", 0, CLOPT_TYPE_STRING, NULL, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD | OPT_CLAMSCAN, "Exclude a specific PUA category. This directive can be used multiple times.\nSee https://docs.clamav.net/faq/faq-pua.html for the complete list of PUA\ncategories.", "NetTool\nPWTool"},
 
     {"IncludePUA", "include-pua", 0, CLOPT_TYPE_STRING, NULL, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD | OPT_CLAMSCAN, "Only include a specific PUA category. This directive can be used multiple\ntimes.", "Spy\nScanner\nRAT"},
 
@@ -458,9 +471,9 @@ const struct clam_option __clam_options[] = {
 
     {"OnAccessExcludePath", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD, "This option allows excluding directories from on-access scanning. It can\nbe used multiple times. Only works with DDD system.", "/home/bofh\n/root"},
 
-    {"OnAccessExcludeRootUID", NULL, 0, CLOPT_TYPE_BOOL, MATCH_BOOL, -1, NULL, 0, OPT_CLAMD, "Use this option to whitelist the root UID (0) and allow any processes run under root to access all watched files without triggering scans.", "no"},
+    {"OnAccessExcludeRootUID", NULL, 0, CLOPT_TYPE_BOOL, MATCH_BOOL, -1, NULL, 0, OPT_CLAMD, "Use this option to exclude the root UID (0) and allow any processes run under root to access all watched files without triggering scans.", "no"},
 
-    {"OnAccessExcludeUID", NULL, 0, CLOPT_TYPE_NUMBER, MATCH_NUMBER, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD, "With this option you can whitelist specific UIDs. Processes with these UIDs\nwill be able to access all files.\nThis option can be used multiple times (one per line). Using a value of 0 on any line will disable this option entirely. To whitelist the root UID please enable the OnAccessExcludeRootUID option.", "0"},
+    {"OnAccessExcludeUID", NULL, 0, CLOPT_TYPE_NUMBER, MATCH_NUMBER, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD, "With this option you can exclude specific UIDs. Processes with these UIDs\nwill be able to access all files.\nThis option can be used multiple times (one per line). Using a value of 0 on any line will disable this option entirely. To exclude the root UID please enable the OnAccessExcludeRootUID option.", "0"},
 
     {"OnAccessExcludeUname", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, FLAG_MULTIPLE, OPT_CLAMD, "This option allows exclusions via user names when using the on-access scanning client. It can\nbe used multiple times.", "clamuser"},
 
@@ -548,7 +561,7 @@ const struct clam_option __clam_options[] = {
 
     {"ConnectTimeout", NULL, 0, CLOPT_TYPE_NUMBER, MATCH_NUMBER, 30, NULL, 0, OPT_FRESHCLAM, "Timeout in seconds when connecting to database server.", "30"},
 
-    {"ReceiveTimeout", NULL, 0, CLOPT_TYPE_NUMBER, MATCH_NUMBER, 0, NULL, 0, OPT_FRESHCLAM, "Maximum time in seconds for each download operation. 0 means no timeout.", "0"},
+    {"ReceiveTimeout", NULL, 0, CLOPT_TYPE_NUMBER, MATCH_NUMBER, 60, NULL, 0, OPT_FRESHCLAM, "Timeout in seconds when reading from database server. 0 means no timeout.", "60"},
 
     {"Bytecode", NULL, 0, CLOPT_TYPE_BOOL, MATCH_BOOL, 1, NULL, 0, OPT_FRESHCLAM, "This option enables downloading of bytecode.cvd, which includes additional\ndetection mechanisms and improvements to the ClamAV engine.", "yes"},
 
@@ -605,7 +618,9 @@ const struct clam_option __clam_options[] = {
 
     {"Chroot", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, 0, OPT_MILTER, "Chroot to the specified directory.\nChrooting is performed just after reading the config file and before\ndropping privileges.", "/newroot"},
 
-    {"Whitelist", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, 0, OPT_MILTER, "This option specifies a file which contains a list of basic POSIX regular\nexpressions. Addresses (sent to or from - see below) matching these regexes\nwill not be scanned.  Optionally each line can start with the string \"From:\"\nor \"To:\" (note: no whitespace after the colon) indicating if it is,\nrespectively, the sender or recipient that is to be whitelisted.\nIf the field is missing, \"To:\" is assumed.\nLines starting with #, : or ! are ignored.", "/etc/whitelisted_addresses"},
+    {"AllowList", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, 0, OPT_MILTER, "This option specifies a file which contains a list of basic POSIX regular\nexpressions. Addresses (sent to or from - see below) matching these regexes\nwill not be scanned.  Optionally each line can start with the string \"From:\"\nor \"To:\" (note: no whitespace after the colon) indicating if it is,\nrespectively, the sender or recipient that is to be allowed.\nIf the field is missing, \"To:\" is assumed.\nLines starting with #, : or ! are ignored.", "/etc/allowed_addresses"},
+    // The Whitelist option should remain functional for a version or two, but has been deprecated in the documentation in favor of "AllowList".
+    {"Whitelist", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, 0, OPT_MILTER, "This option specifies a file which contains a list of basic POSIX regular\nexpressions. Addresses (sent to or from - see below) matching these regexes\nwill not be scanned.  Optionally each line can start with the string \"From:\"\nor \"To:\" (note: no whitespace after the colon) indicating if it is,\nrespectively, the sender or recipient that is to be allowed.\nIf the field is missing, \"To:\" is assumed.\nLines starting with #, : or ! are ignored.", "/etc/allowed_addresses"},
 
     {"SkipAuthenticated", NULL, 0, CLOPT_TYPE_STRING, NULL, -1, NULL, 0, OPT_MILTER, "Messages from authenticated SMTP users matching this extended POSIX\nregular expression (egrep-like) will not be scanned.\nAs an alternative, a file containing a plain (not regex) list of names (one\nper line) can be specified using the prefix \"file:\".\ne.g. SkipAuthenticated file:/etc/good_guys\n\nNote: this is the AUTH login name!", "SkipAuthenticated ^(tom|dick|henry)$"},
 

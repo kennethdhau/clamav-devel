@@ -61,13 +61,9 @@
 #include <libxml/parser.h>
 #endif
 
-#ifdef HAVE_LTDL
-#include "ltdl.h"
-#else // !HAVE_LTDL
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
-#endif // !HAVE_LTDL
 
 #include "clamav.h"
 #include "others.h"
@@ -93,82 +89,6 @@ static int is_rar_inited = 0;
 
 #define PASTE2(a, b) a #b
 #define PASTE(a, b) PASTE2(a, b)
-
-#ifdef HAVE_LTDL
-
-static int warn_dlerror(const char *msg)
-{
-    const char *err = lt_dlerror();
-    if (err)
-        cli_warnmsg("%s: %s\n", msg, err);
-    else
-        cli_warnmsg("%s\n", err);
-    return 0;
-}
-
-static int lt_init(void)
-{
-    if (lt_dlinit()) {
-        warn_dlerror("Cannot init ltdl - unrar support unavailable");
-        return -1;
-    }
-    return 0;
-}
-
-static void *load_module(const char *name, const char *featurename)
-{
-    static const char *suffixes[] = {
-        LT_MODULE_EXT "." LIBCLAMAV_FULLVER,
-        PASTE(LT_MODULE_EXT ".", LIBCLAMAV_MAJORVER),
-        LT_MODULE_EXT,
-        "." LT_LIBEXT};
-
-    const char *searchpath;
-    const lt_dlinfo *info;
-    char modulename[128];
-    lt_dlhandle rhandle;
-    unsigned i;
-
-    if (lt_dladdsearchdir(SEARCH_LIBDIR)) {
-        cli_dbgmsg("lt_dladdsearchdir failed for %s\n", SEARCH_LIBDIR);
-    }
-
-    searchpath = lt_dlgetsearchpath();
-    if (!searchpath)
-        searchpath = "";
-
-    cli_dbgmsg("searching for %s, user-searchpath: %s\n", featurename, searchpath);
-    for (i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); i++) {
-        snprintf(modulename, sizeof(modulename), "%s%s", name, suffixes[i]);
-        rhandle = lt_dlopen(modulename);
-        if (rhandle)
-            break;
-        cli_dbgmsg("searching for %s: %s not found\n", featurename, modulename);
-    }
-
-    if (!rhandle) {
-        const char *err = lt_dlerror();
-        if (!err) err = "";
-#ifdef WARN_DLOPEN_FAIL
-        cli_warnmsg("Cannot dlopen %s: %s - %s support unavailable\n", name, err, featurename);
-#else
-        cli_dbgmsg("Cannot dlopen %s: %s - %s support unavailable\n", name, err, featurename);
-#endif
-        return rhandle;
-    }
-
-    info = lt_dlgetinfo(rhandle);
-    if (info)
-        cli_dbgmsg("%s support loaded from %s %s\n", featurename, info->filename ? info->filename : "?", info->name ? info->name : "");
-    return (void *)rhandle;
-}
-
-static void *get_module_function(lt_dlhandle handle, const char *name)
-{
-    return lt_dlsym(handle, name);
-}
-
-#else // !HAVE_LTDL
 
 static void *load_module(const char *name, const char *featurename)
 {
@@ -358,8 +278,6 @@ static void *get_module_function(void *handle, const char *name)
 }
 #endif // !_WIN32
 
-#endif // !HAVE_LTDL
-
 static void rarload(void)
 {
 #ifdef _WIN32
@@ -380,7 +298,7 @@ static void rarload(void)
     cli_unrar_skip_file        = unrar_skip_file;
     cli_unrar_close            = unrar_close;
 #else
-    rhandle       = load_module("libclamunrar_iface", "unrar");
+    rhandle = load_module("libclamunrar_iface", "unrar");
     if (NULL == rhandle)
         return;
 
@@ -505,13 +423,7 @@ cl_error_t cl_init(unsigned int initoptions)
 
     cl_initialize_crypto();
 
-#ifdef HAVE_LTDL
-    if (lt_init() == 0) {
-        rarload();
-    }
-#else
     rarload();
-#endif
 
     gettimeofday(&tv, (struct timezone *)0);
     srand(pid + tv.tv_usec * (pid + 1) + clock());
@@ -1036,16 +948,22 @@ struct cl_settings *cl_engine_settings_copy(const struct cl_engine *engine)
     settings->bytecode_mode      = engine->bytecode_mode;
     settings->pua_cats           = engine->pua_cats ? strdup(engine->pua_cats) : NULL;
 
-    settings->cb_pre_cache   = engine->cb_pre_cache;
-    settings->cb_pre_scan    = engine->cb_pre_scan;
-    settings->cb_post_scan   = engine->cb_post_scan;
-    settings->cb_virus_found = engine->cb_virus_found;
-    settings->cb_sigload     = engine->cb_sigload;
-    settings->cb_sigload_ctx = engine->cb_sigload_ctx;
-    settings->cb_hash        = engine->cb_hash;
-    settings->cb_meta        = engine->cb_meta;
-    settings->cb_file_props  = engine->cb_file_props;
-    settings->engine_options = engine->engine_options;
+    settings->cb_pre_cache                   = engine->cb_pre_cache;
+    settings->cb_pre_scan                    = engine->cb_pre_scan;
+    settings->cb_post_scan                   = engine->cb_post_scan;
+    settings->cb_virus_found                 = engine->cb_virus_found;
+    settings->cb_sigload                     = engine->cb_sigload;
+    settings->cb_sigload_ctx                 = engine->cb_sigload_ctx;
+    settings->cb_sigload_progress            = engine->cb_sigload_progress;
+    settings->cb_sigload_progress_ctx        = engine->cb_sigload_progress_ctx;
+    settings->cb_engine_compile_progress     = engine->cb_engine_compile_progress;
+    settings->cb_engine_compile_progress_ctx = engine->cb_engine_compile_progress_ctx;
+    settings->cb_engine_free_progress        = engine->cb_engine_free_progress;
+    settings->cb_engine_free_progress_ctx    = engine->cb_engine_free_progress_ctx;
+    settings->cb_hash                        = engine->cb_hash;
+    settings->cb_meta                        = engine->cb_meta;
+    settings->cb_file_props                  = engine->cb_file_props;
+    settings->engine_options                 = engine->engine_options;
 
     settings->cb_stats_add_sample      = engine->cb_stats_add_sample;
     settings->cb_stats_remove_sample   = engine->cb_stats_remove_sample;
@@ -1111,15 +1029,21 @@ cl_error_t cl_engine_settings_apply(struct cl_engine *engine, const struct cl_se
         engine->pua_cats = NULL;
     }
 
-    engine->cb_pre_cache   = settings->cb_pre_cache;
-    engine->cb_pre_scan    = settings->cb_pre_scan;
-    engine->cb_post_scan   = settings->cb_post_scan;
-    engine->cb_virus_found = settings->cb_virus_found;
-    engine->cb_sigload     = settings->cb_sigload;
-    engine->cb_sigload_ctx = settings->cb_sigload_ctx;
-    engine->cb_hash        = settings->cb_hash;
-    engine->cb_meta        = settings->cb_meta;
-    engine->cb_file_props  = settings->cb_file_props;
+    engine->cb_pre_cache                   = settings->cb_pre_cache;
+    engine->cb_pre_scan                    = settings->cb_pre_scan;
+    engine->cb_post_scan                   = settings->cb_post_scan;
+    engine->cb_virus_found                 = settings->cb_virus_found;
+    engine->cb_sigload                     = settings->cb_sigload;
+    engine->cb_sigload_ctx                 = settings->cb_sigload_ctx;
+    engine->cb_sigload_progress            = settings->cb_sigload_progress;
+    engine->cb_sigload_progress_ctx        = settings->cb_sigload_progress_ctx;
+    engine->cb_engine_compile_progress     = settings->cb_engine_compile_progress;
+    engine->cb_engine_compile_progress_ctx = settings->cb_engine_compile_progress_ctx;
+    engine->cb_engine_free_progress        = settings->cb_engine_free_progress;
+    engine->cb_engine_free_progress_ctx    = settings->cb_engine_free_progress_ctx;
+    engine->cb_hash                        = settings->cb_hash;
+    engine->cb_meta                        = settings->cb_meta;
+    engine->cb_file_props                  = settings->cb_file_props;
 
     engine->cb_stats_add_sample      = settings->cb_stats_add_sample;
     engine->cb_stats_remove_sample   = settings->cb_stats_remove_sample;
@@ -1712,6 +1636,24 @@ void cl_engine_set_clcb_sigload(struct cl_engine *engine, clcb_sigload callback,
     engine->cb_sigload_ctx = callback ? context : NULL;
 }
 
+void cl_engine_set_clcb_sigload_progress(struct cl_engine *engine, clcb_progress callback, void *context)
+{
+    engine->cb_sigload_progress     = callback;
+    engine->cb_sigload_progress_ctx = callback ? context : NULL;
+}
+
+void cl_engine_set_clcb_engine_compile_progress(struct cl_engine *engine, clcb_progress callback, void *context)
+{
+    engine->cb_engine_compile_progress     = callback;
+    engine->cb_engine_compile_progress_ctx = callback ? context : NULL;
+}
+
+void cl_engine_set_clcb_engine_free_progress(struct cl_engine *engine, clcb_progress callback, void *context)
+{
+    engine->cb_engine_free_progress     = callback;
+    engine->cb_engine_free_progress_ctx = callback ? context : NULL;
+}
+
 void cl_engine_set_clcb_hash(struct cl_engine *engine, clcb_hash callback)
 {
     engine->cb_hash = callback;
@@ -1725,4 +1667,17 @@ void cl_engine_set_clcb_meta(struct cl_engine *engine, clcb_meta callback)
 void cl_engine_set_clcb_file_props(struct cl_engine *engine, clcb_file_props callback)
 {
     engine->cb_file_props = callback;
+}
+
+uint8_t cli_get_debug_flag()
+{
+    return cli_debug_flag;
+}
+
+uint8_t cli_set_debug_flag(uint8_t debug_flag)
+{
+    uint8_t was    = cli_debug_flag;
+    cli_debug_flag = debug_flag;
+
+    return was;
 }

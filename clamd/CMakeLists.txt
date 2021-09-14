@@ -31,7 +31,10 @@ target_sources( clamd
         thrmgr.c
         thrmgr.h )
 if(WIN32)
-    target_sources( clamd PRIVATE ${CMAKE_SOURCE_DIR}/win32/res/clamd.rc )
+    target_sources( clamd 
+    PRIVATE 
+        ${CMAKE_SOURCE_DIR}/win32/res/clamd.rc
+        ${CMAKE_SOURCE_DIR}/win32/res/clam.manifest )
 endif()
 target_include_directories( clamd
     PRIVATE ${CMAKE_BINARY_DIR} # For clamav-config.h
@@ -42,16 +45,22 @@ target_link_libraries( clamd
         ClamAV::libclamav
         ClamAV::common )
 if(WIN32)
-    install(TARGETS clamd DESTINATION .)
+    install(TARGETS clamd DESTINATION . COMPONENT programs)
 else()
-    install(TARGETS clamd DESTINATION ${CMAKE_INSTALL_SBINDIR})
+    install(TARGETS clamd DESTINATION ${CMAKE_INSTALL_SBINDIR} COMPONENT programs)
 endif()
 
 if(SYSTEMD_FOUND)
     configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/clamav-daemon.service.in
         ${CMAKE_CURRENT_BINARY_DIR}/clamav-daemon.service @ONLY)
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/clamav-daemon.socket.in
+        ${CMAKE_CURRENT_BINARY_DIR}/clamav-daemon.socket @ONLY)
     install(
         FILES ${CMAKE_CURRENT_BINARY_DIR}/clamav-daemon.service
-        DESTINATION ${SYSTEMD_UNIT_DIR})
+        DESTINATION ${SYSTEMD_UNIT_DIR} COMPONENT programs)
+    install(
+        FILES ${CMAKE_CURRENT_BINARY_DIR}/clamav-daemon.socket
+        DESTINATION ${SYSTEMD_UNIT_DIR} COMPONENT programs)
 endif()

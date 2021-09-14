@@ -65,13 +65,14 @@
 #include "actions.h"
 #include "clamdcom.h"
 
+#ifdef _WIN32
+#include "scanmem.h"
+#endif
+
 #include "client.h"
 #include "proto.h"
 
 unsigned long int maxstream;
-#ifndef _WIN32
-struct sockaddr_un nixsock;
-#endif
 extern struct optstruct *clamdopts;
 
 /* Inits the communication layer
@@ -219,10 +220,11 @@ int16_t ping_clamd(const struct optstruct *opts)
 
     isremote(opts);
     do {
-        if ((sockd = dconnect()) >= 0) {
+        if ((sockd = dconnect(clamdopts)) >= 0) {
+            const char zPING[] = "zPING";
             recvlninit(&rcv, sockd);
 
-            if (sendln(sockd, "zPING", 5)) {
+            if (sendln(sockd, zPING, sizeof(zPING))) {
                 logg("*PING failed...\n");
                 closesocket(sockd);
             } else {
@@ -308,7 +310,21 @@ static char *makeabs(const char *basepath)
 static int client_scan(const char *file, int scantype, int *infected, int *err, int maxlevel, int session, int flags)
 {
     int ret;
-    char *fullpath = makeabs(file);
+    char *real_path = NULL;
+    char *fullpath  = NULL;
+
+    /* Convert relative path to fullpath */
+    fullpath = makeabs(file);
+
+    /* Convert fullpath to the real path (evaluating symlinks and . and ..).
+       Doing this early on will ensure that the scan results will appear consistent
+       across regular scans, --fdpass scans, and --stream scans. */
+    if (CL_SUCCESS != cli_realpath(fullpath, &real_path)) {
+        logg("*client_scan: Failed to determine real filename of %s.\n", fullpath);
+    } else {
+        free(fullpath);
+        fullpath = real_path;
+    }
 
     if (!fullpath)
         return 0;
@@ -325,12 +341,13 @@ int get_clamd_version(const struct optstruct *opts)
     char *buff;
     int len, sockd;
     struct RCVLN rcv;
+    const char zVERSION[] = "zVERSION";
 
     isremote(opts);
-    if ((sockd = dconnect()) < 0) return 2;
+    if ((sockd = dconnect(clamdopts)) < 0) return 2;
     recvlninit(&rcv, sockd);
 
-    if (sendln(sockd, "zVERSION", 9)) {
+    if (sendln(sockd, zVERSION, sizeof(zVERSION))) {
         closesocket(sockd);
         return 2;
     }
@@ -352,12 +369,13 @@ int reload_clamd_database(const struct optstruct *opts)
     char *buff;
     int len, sockd;
     struct RCVLN rcv;
+    const char zRELOAD[] = "zRELOAD";
 
     isremote(opts);
-    if ((sockd = dconnect()) < 0) return 2;
+    if ((sockd = dconnect(clamdopts)) < 0) return 2;
     recvlninit(&rcv, sockd);
 
-    if (sendln(sockd, "zRELOAD", 8)) {
+    if (sendln(sockd, zRELOAD, sizeof(zRELOAD))) {
         closesocket(sockd);
         return 2;
     }
@@ -425,7 +443,7 @@ int client(const struct optstruct *opts, int *infected, int *err)
             return 2;
         }
         if ((sb.st_mode & S_IFMT) != S_IFREG) scantype = STREAM;
-        if ((sockd = dconnect()) >= 0 && (ret = dsresult(sockd, scantype, NULL, &ret, NULL)) >= 0)
+        if ((sockd = dconnect(clamdopts)) >= 0 && (ret = dsresult(sockd, scantype, NULL, &ret, NULL, clamdopts)) >= 0)
             *infected = ret;
         else
             errors = 1;
@@ -447,7 +465,20 @@ int client(const struct optstruct *opts, int *infected, int *err)
 	    }
 	    */
         }
-    } else {
+    }
+#ifdef _WIN32
+    else if (optget(opts, "memory")->enabled) {
+        struct mem_info minfo;
+        minfo.d      = 1;
+        minfo.opts   = opts;
+        minfo.ifiles = *infected;
+        minfo.errors = errors;
+        int res      = scanmem(&minfo);
+        *infected    = minfo.ifiles;
+        *err         = minfo.errors;
+    }
+#endif
+    else {
         errors = client_scan("", scantype, infected, err, maxrec, session, flags);
     }
     return *infected ? 1 : (errors ? 2 : 0);

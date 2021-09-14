@@ -31,6 +31,9 @@ jobs:
         with:
           args: install wixtoolset
 
+      - name: Install pytest for easier to read test results
+        run: python3 -m pip install pytest
+
       - uses: lukka/get-cmake@latest
 
       # Restore from cache the previously built ports. If cache-miss, download, build vcpkg ports.
@@ -62,7 +65,7 @@ jobs:
         with:
           cmakeGenerator: "Ninja" # Visual Studio 15 2017
           cmakeListsOrSettingsJson: "CMakeListsTxtBasic"
-          cmakeListsTxtPath: "${{runner.workspace}}/clamav-devel/CMakeLists.txt"
+          cmakeListsTxtPath: "${{runner.workspace}}/clamav/CMakeLists.txt"
           useVcpkgToolchainFile: true
           cmakeAppendedArgs: '-A x64 -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DENABLE_EXAMPLES=ON -DENABLE_STATIC_LIB=ON -- -v'
           cmakeBuildType: "${{ env.BUILD_TYPE }}"
@@ -91,6 +94,9 @@ jobs:
       - name: Install Dependencies
         run: brew install bzip2 check curl-openssl json-c libxml2 ncurses openssl@1.1 pcre2 zlib
 
+      - name: Install pytest for easier to read test results
+        run: python3 -m pip install pytest
+
       - uses: lukka/get-cmake@latest
 
       - name: Create Build Directory
@@ -107,7 +113,7 @@ jobs:
         # and build directories, but this is only available with CMake 3.13 and higher.
         # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
         run:
-          cmake ${{runner.workspace}}/clamav-devel -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake ${{runner.workspace}}/clamav -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
           -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl@1.1/
           -DOPENSSL_CRYPTO_LIBRARY=/usr/local/opt/openssl@1.1/lib/libcrypto.1.1.dylib
           -DOPENSSL_SSL_LIBRARY=/usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib
@@ -133,11 +139,17 @@ jobs:
     steps:
       - uses: actions/checkout@v1
 
+      - name: Update package listings
+        run: sudo apt-get update
+
       - name: Install Build Tools
         run: sudo apt-get install -y bison flex valgrind
 
       - name: Install Dependencies
         run: sudo apt-get install -y check libbz2-dev libcurl4-openssl-dev libjson-c-dev libmilter-dev libncurses5-dev libpcre3-dev libssl-dev libxml2-dev zlib1g-dev
+
+      - name: Install pytest for easier to read test results
+        run: python3 -m pip install pytest
 
       - uses: lukka/get-cmake@latest
 
@@ -155,7 +167,7 @@ jobs:
         # and build directories, but this is only available with CMake 3.13 and higher.
         # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
         run:
-          cmake ${{runner.workspace}}/clamav-devel -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake ${{runner.workspace}}/clamav -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
           -DENABLE_STATIC_LIB=ON
           -DENABLE_EXAMPLES=ON
 

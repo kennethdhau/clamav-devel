@@ -33,12 +33,12 @@
 
 /* Certain OSs already use 64bit variables in their stat struct */
 #if (!defined(__FreeBSD__) && !defined(__APPLE__))
-#define STAT64_BLACKLIST 1
+#define STAT64_OK 1
 #else
-#define STAT64_BLACKLIST 0
+#define STAT64_OK 0
 #endif
 
-#if defined(HAVE_STAT64) && STAT64_BLACKLIST
+#if defined(HAVE_STAT64) && STAT64_OK
 
 #include <unistd.h>
 
@@ -47,6 +47,7 @@
 #define LSTAT lstat64
 #define FSTAT fstat64
 #define safe_open(a, b) open(a, b | O_LARGEFILE)
+
 #else
 
 #define STATBUF struct stat
@@ -473,8 +474,8 @@ extern cl_error_t cl_engine_free(struct cl_engine *engine);
  * @param type      File type detected via magic - i.e. NOT on the fly - (e.g. "CL_TYPE_MSEXE").
  * @param context   Opaque application provided data.
  * @return          CL_CLEAN = File is scanned.
- * @return          CL_BREAK = Whitelisted by callback - file is skipped and marked as clean.
- * @return          CL_VIRUS = Blacklisted by callback - file is skipped and marked as infected.
+ * @return          CL_BREAK = Allowed by callback - file is skipped and marked as clean.
+ * @return          CL_VIRUS = Blocked by callback - file is skipped and marked as infected.
  */
 typedef cl_error_t (*clcb_pre_cache)(int fd, const char *type, void *context);
 /**
@@ -499,8 +500,8 @@ extern void cl_engine_set_clcb_pre_cache(struct cl_engine *engine, clcb_pre_cach
  * @param type      File type detected via magic - i.e. NOT on the fly - (e.g. "CL_TYPE_MSEXE").
  * @param context   Opaque application provided data.
  * @return          CL_CLEAN = File is scanned.
- * @return          CL_BREAK = Whitelisted by callback - file is skipped and marked as clean.
- * @return          CL_VIRUS = Blacklisted by callback - file is skipped and marked as infected.
+ * @return          CL_BREAK = Allowed by callback - file is skipped and marked as clean.
+ * @return          CL_VIRUS = Blocked by callback - file is skipped and marked as infected.
  */
 typedef cl_error_t (*clcb_pre_scan)(int fd, const char *type, void *context);
 /**
@@ -526,8 +527,8 @@ extern void cl_engine_set_clcb_pre_scan(struct cl_engine *engine, clcb_pre_scan 
  * @param virname   A signature name if there was one or more matches.
  * @param context   Opaque application provided data.
  * @return          Scan result is not overridden.
- * @return          CL_BREAK = Whitelisted by callback - scan result is set to CL_CLEAN.
- * @return          Blacklisted by callback - scan result is set to CL_VIRUS.
+ * @return          CL_BREAK = Allowed by callback - scan result is set to CL_CLEAN.
+ * @return          Blocked by callback - scan result is set to CL_VIRUS.
  */
 typedef cl_error_t (*clcb_post_scan)(int fd, int result, const char *virname, void *context);
 /**
@@ -541,14 +542,14 @@ typedef cl_error_t (*clcb_post_scan)(int fd, int result, const char *virname, vo
 extern void cl_engine_set_clcb_post_scan(struct cl_engine *engine, clcb_post_scan callback);
 
 /**
- * @brief Post-scan callback.
+ * @brief Virus-found callback.
  *
  * Called for each signature match.
  * If all-match is enabled, clcb_virus_found() may be called multiple times per
  * scan.
  *
  * In addition, clcb_virus_found() does not have a return value and thus.
- * can not be used to whitelist the match.
+ * can not be used to ignore the match.
  *
  * @param fd        File descriptor which was scanned.
  * @param virname   Virus name.
@@ -599,6 +600,66 @@ enum cl_msg {
     CL_MSG_WARN         = 64, /* LibClamAV WARNING: */
     CL_MSG_ERROR        = 128 /* LibClamAV ERROR: */
 };
+
+/**
+ * @brief Progress callback for sig-load, engine-compile, and engine-free.
+ *
+ * Progress is complete when total_items == now_completed.
+ *
+ * Note: The callback should return CL_SUCCESS. We reserve the right to have it
+ *       cancel the operation in the future if you return something else...
+ *       ... but for now, the return value will be ignored.
+ *
+ * @param total_items   Total number of items
+ * @param now_completed Number of items completed
+ * @param context       Opaque application provided data
+ * @return cl_error_t   reserved for future use
+ */
+typedef cl_error_t (*clcb_progress)(size_t total_items, size_t now_completed, void *context);
+
+/**
+ * @brief Set a progress callback function to be called incrementally during a
+ * database load.
+ *
+ * Caution: changing options for an engine that is in-use is not thread-safe!
+ *
+ * @param engine    The initialized scanning engine
+ * @param callback  The callback function pointer
+ * @param context   Opaque application provided data
+ */
+extern void cl_engine_set_clcb_sigload_progress(struct cl_engine *engine, clcb_progress callback, void *context);
+
+/**
+ * @brief Set a progress callback function to be called incrementally during an
+ * engine compile.
+ *
+ * Disclaimer: the number of items for this is a rough estimate of the items that
+ * tend to take longest to compile and doesn't represent an accurate number of
+ * things compiled.
+ *
+ * Caution: changing options for an engine that is in-use is not thread-safe!
+ *
+ * @param engine    The initialized scanning engine
+ * @param callback  The callback function pointer
+ * @param context   Opaque application provided data
+ */
+extern void cl_engine_set_clcb_engine_compile_progress(struct cl_engine *engine, clcb_progress callback, void *context);
+
+/**
+ * @brief Set a progress callback function to be called incrementally during an
+ * engine free (if the engine is in fact freed).
+ *
+ * Disclaimer: the number of items for this is a rough estimate of the items that
+ * tend to take longest to free and doesn't represent an accurate number of
+ * things freed.
+ *
+ * Caution: changing options for an engine that is in-use is not thread-safe!
+ *
+ * @param engine    The initialized scanning engine
+ * @param callback  The callback function pointer
+ * @param context   Opaque application provided data
+ */
+extern void cl_engine_set_clcb_engine_free_progress(struct cl_engine *engine, clcb_progress callback, void *context);
 
 /**
  * @brief Logging message callback for info, warning, and error messages.
@@ -657,7 +718,7 @@ extern void cl_engine_set_clcb_hash(struct cl_engine *engine, clcb_hash callback
 /**
  * @brief Archive meta matching callback function.
  *
- * May be used to blacklist archive/container samples based on archive metadata.
+ * May be used to block archive/container samples based on archive metadata.
  * Function is invoked multiple times per archive. Typically once per contained file.
  *
  * Note: Used by the --archive-verbose clamscan option. Overriding this will alter
@@ -670,7 +731,7 @@ extern void cl_engine_set_clcb_hash(struct cl_engine *engine, clcb_hash callback
  * @param is_encrypted      Boolean non-zero if the contained file is encrypted.
  * @param filepos_container File index in container.
  * @param context           Opaque application provided data.
- * @return                  CL_VIRUS to blacklist
+ * @return                  CL_VIRUS to block (alert on)
  * @return                  CL_CLEAN to continue scanning
  */
 typedef cl_error_t (*clcb_meta)(const char *container_type, unsigned long fsize_container, const char *filename,
@@ -904,7 +965,7 @@ extern cl_error_t cl_scandesc(int desc, const char *filename, const char **virna
  * @param[out] scanned      The number of bytes scanned.
  * @param engine            The scanning engine.
  * @param scanoptions       Scanning options.
- * @param[in/out] context   An opaque context structure allowing the caller to record details about the sample being scanned.
+ * @param[in,out] context   An opaque context structure allowing the caller to record details about the sample being scanned.
  * @return cl_error_t       CL_CLEAN, CL_VIRUS, or an error code if an error occured during the scan.
  */
 extern cl_error_t cl_scandesc_callback(int desc, const char *filename, const char **virname, unsigned long int *scanned, const struct cl_engine *engine, struct cl_scan_options *scanoptions, void *context);
@@ -931,7 +992,7 @@ extern cl_error_t cl_scanfile(const char *filename, const char **virname, unsign
  * @param[out] scanned      The number of bytes scanned.
  * @param engine            The scanning engine.
  * @param scanoptions       Scanning options.
- * @param[in/out] context   An opaque context structure allowing the caller to record details about the sample being scanned.
+ * @param[in,out] context   An opaque context structure allowing the caller to record details about the sample being scanned.
  * @return cl_error_t       CL_CLEAN, CL_VIRUS, or an error code if an error occured during the scan.
  */
 extern cl_error_t cl_scanfile_callback(const char *filename, const char **virname, unsigned long int *scanned, const struct cl_engine *engine, struct cl_scan_options *scanoptions, void *context);
@@ -939,7 +1000,23 @@ extern cl_error_t cl_scanfile_callback(const char *filename, const char **virnam
 /* ----------------------------------------------------------------------------
  * Database handling.
  */
+
+/**
+ * @brief Load the signature databases found at the path.
+ *
+ * @param path          May be a file or directory.
+ * @param engine        The engine to load the signatures into
+ * @param[out] signo    The number of signatures loaded
+ * @param dboptions     Database load bitflag field. See the CL_DB_* defines, above.
+ * @return cl_error_t
+ */
 extern cl_error_t cl_load(const char *path, struct cl_engine *engine, unsigned int *signo, unsigned int dboptions);
+
+/**
+ * @brief Get the default database directory path.
+ *
+ * @return const char*
+ */
 extern const char *cl_retdbdir(void);
 
 /* ----------------------------------------------------------------------------

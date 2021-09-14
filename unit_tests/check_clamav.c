@@ -61,15 +61,17 @@ END_TEST
 /* extern void cl_debug(void); */
 START_TEST(test_cl_debug)
 {
-    int old_status = cli_debug_flag;
-    cli_debug_flag = 0;
-    cl_debug();
-    ck_assert_msg(1 == cli_debug_flag, "cl_debug failed to set cli_debug_flag");
+    int old_status = cli_set_debug_flag(0);
 
-    cli_debug_flag = 1;
     cl_debug();
-    ck_assert_msg(1 == cli_debug_flag, "cl_debug failed when flag was already set");
-    cli_debug_flag = old_status;
+    ck_assert_msg(1 == cli_get_debug_flag(), "cl_debug failed to set cli_debug_flag");
+
+    (void)cli_set_debug_flag(1);
+
+    cl_debug();
+    ck_assert_msg(1 == cli_get_debug_flag(), "cl_debug failed when flag was already set");
+
+    (void)cli_set_debug_flag(old_status);
 }
 END_TEST
 
@@ -423,7 +425,7 @@ END_TEST
 static char **testfiles     = NULL;
 static unsigned testfiles_n = 0;
 
-static const int expected_testfiles = 48;
+static const int expected_testfiles = 49;
 
 static unsigned skip_files(void)
 {
@@ -447,6 +449,11 @@ static unsigned skip_files(void)
     skipped += 0;
 #endif
 
+#if HAVE_UNRAR
+#else
+    skipped += 2;
+#endif
+
     return skipped;
 }
 
@@ -456,7 +463,7 @@ static void init_testfiles(void)
     unsigned i = 0;
     int expect = expected_testfiles;
 
-    DIR *d = opendir(OBJDIR PATHSEP ".." PATHSEP "test");
+    DIR *d = opendir(OBJDIR PATHSEP "input" PATHSEP "clamav_hdb_scanfiles");
     ck_assert_msg(!!d, "opendir");
     if (!d)
         return;
@@ -495,7 +502,7 @@ static int inited = 0;
 static void engine_setup(void)
 {
     unsigned int sigs = 0;
-    const char *hdb   = OBJDIR PATHSEP "clamav.hdb";
+    const char *hdb   = OBJDIR PATHSEP "input" PATHSEP "clamav.hdb";
 
     init_testfiles();
     if (!inited)
@@ -520,7 +527,7 @@ static int get_test_file(int i, char *file, unsigned fsize, unsigned long *size)
     STATBUF st;
 
     ck_assert_msg(i < testfiles_n, "%i < %i %s", i, testfiles_n, file);
-    snprintf(file, fsize, OBJDIR PATHSEP ".." PATHSEP "test" PATHSEP "%s", testfiles[i]);
+    snprintf(file, fsize, OBJDIR PATHSEP "input" PATHSEP "clamav_hdb_scanfiles" PATHSEP "%s", testfiles[i]);
 
     fd = open(file, O_RDONLY | O_BINARY);
     ck_assert_msg(fd > 0, "open");

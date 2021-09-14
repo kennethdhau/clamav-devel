@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Cisco Systems, Inc. and/or its affiliates. All rights reserved.
+# Copyright (C) 2020-2021 Cisco Systems, Inc. and/or its affiliates. All rights reserved.
 
 """
 Run sigtool tests.
@@ -29,7 +29,7 @@ class TC(testcase.TestCase):
         TC.path_www = TC.path_tmp / 'www'
         TC.path_www.mkdir()
         shutil.copy(
-            str(TC.path_build / 'unit_tests' / 'clamav.hdb'),
+            str(TC.path_build / 'unit_tests' / 'input' / 'clamav.hdb'),
             str(TC.path_www),
         )
 
@@ -37,7 +37,7 @@ class TC(testcase.TestCase):
         TC.sigtool_pid = TC.path_tmp / 'sigtool-test.pid'
         TC.sigtool_config = TC.path_tmp / 'sigtool-test.conf'
         TC.sigtool_config.write_text('''
-            DatabaseMirror 127.0.0.1
+            DatabaseMirror localhost
             PidFile {sigtool_pid}
             LogVerbose yes
             LogFileMaxSize 0
